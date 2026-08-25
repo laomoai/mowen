@@ -1,4 +1,4 @@
-<view class="md-detail-page">
+<view class="md-detail-page" capture-bind:touchstart="onTouchStart" capture-bind:touchend="onTouchEnd">
   <view class="md-hero">
     <view class="md-doc-icon">
       <view wx:if="{{icon}}" class="detail-emoji">{{icon}}</view>

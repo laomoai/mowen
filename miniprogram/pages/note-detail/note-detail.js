@@ -3,6 +3,7 @@ const { parseMarkdown } = require('../../utils/markdown')
 const { getConfig } = require('../../utils/storage')
 const { rememberNode } = require('../../utils/recent')
 const { formatIcon } = require('../../utils/icons')
+const { rememberTouchStart, isEdgeSwipeBack } = require('../../utils/edge-swipe')
 
 Page({
   data: {
@@ -45,6 +46,24 @@ Page({
     } catch (err) {
       this.setData({ loading: false })
       wx.showToast({ title: err.message || '打开失败', icon: 'none' })
+    }
+  },
+
+  goBack() {
+    wx.navigateBack({
+      fail() {
+        wx.switchTab({ url: '/pages/workspace/workspace' })
+      },
+    })
+  },
+
+  onTouchStart(event) {
+    rememberTouchStart(this, event)
+  },
+
+  onTouchEnd(event) {
+    if (isEdgeSwipeBack(this, event)) {
+      this.goBack()
     }
   },
 })

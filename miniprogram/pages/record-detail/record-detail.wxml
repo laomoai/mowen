@@ -1,4 +1,4 @@
-<view class="page">
+<view class="page" capture-bind:touchstart="onTouchStart" capture-bind:touchend="onTouchEnd">
   <view class="page-title">{{title}}</view>
   <view wx:if="{{loading}}" class="empty">正在打开记录...</view>
   <view wx:else class="field-stack">

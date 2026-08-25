@@ -10,7 +10,7 @@
     <view wx:for="{{items}}" wx:key="key" class="recent-card" bindtap="openRecent" data-key="{{item.key}}">
       <view class="recent-emoji">{{item.iconText}}</view>
       <view class="recent-main">
-        <view class="recent-title">{{item.title}}</view>
+        <view class="recent-title">{{item.displayTitle}}</view>
         <view class="recent-meta">{{item.meta}}</view>
       </view>
     </view>

@@ -1,5 +1,5 @@
 const { getRecent } = require('../../utils/storage')
-const { formatIcon } = require('../../utils/icons')
+const { formatIcon, titleWithoutIcon } = require('../../utils/icons')
 
 Page({
   data: {
@@ -38,6 +38,7 @@ Page({
     const items = getRecent().map((entry) => ({
       ...entry,
       iconText: iconForKind(entry.kind, entry.icon),
+      displayTitle: titleWithoutIcon(entry.title, entry.icon, entry.kind),
       meta: metaForEntry(entry),
     }))
     this.setData({ items })

@@ -1,7 +1,8 @@
 const { rememberNode } = require('../../utils/recent')
 const { getWorkspaceTree } = require('../../utils/api')
 const { getConfig } = require('../../utils/storage')
-const { formatIcon } = require('../../utils/icons')
+const { formatIcon, titleWithoutIcon } = require('../../utils/icons')
+const { rememberTouchStart, isEdgeSwipeBack } = require('../../utils/edge-swipe')
 
 Page({
   data: {
@@ -73,6 +74,7 @@ Page({
           countText: `${countFolderItems(nodes, node.id)} 个文件`,
           theme: folderTheme(index),
           displayIcon: formatIcon(node.icon, 'folder'),
+          displayTitle: titleWithoutIcon(node.title, node.icon, 'folder'),
         })),
       files: nodes
         .filter((node) => node.kind !== 'folder' && (parentId ? node.parent_id === parentId : true))
@@ -82,6 +84,7 @@ Page({
             ? `${Number(node.row_count || 0)} 条记录`
             : 'MD 文档',
           ext: formatIcon(node.icon, node.kind),
+          displayTitle: titleWithoutIcon(node.title, node.icon, node.kind),
           theme: node.kind === 'table' ? 'sheet' : 'doc',
         })),
     })
@@ -128,6 +131,17 @@ Page({
       currentTitle: prev ? prev.title : '全部',
     })
     this.refreshItems()
+  },
+
+  onTouchStart(event) {
+    rememberTouchStart(this, event)
+  },
+
+  onTouchEnd(event) {
+    if (!this.data.stack.length) return
+    if (isEdgeSwipeBack(this, event)) {
+      this.goFolderBack()
+    }
   },
 })
 

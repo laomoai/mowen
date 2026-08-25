@@ -1,6 +1,7 @@
 const { getViewerRecords } = require('../../utils/api')
 const { rememberNode, rememberRecord } = require('../../utils/recent')
 const { formatIcon } = require('../../utils/icons')
+const { rememberTouchStart, isEdgeSwipeBack } = require('../../utils/edge-swipe')
 
 Page({
   data: {
@@ -136,6 +137,20 @@ Page({
   clearFilter() {
     this.setData({ searchText: '' })
     this.loadRows()
+  },
+
+  onTouchStart(event) {
+    rememberTouchStart(this, event)
+  },
+
+  onTouchEnd(event) {
+    if (isEdgeSwipeBack(this, event)) {
+      if (this.data.isFullscreen) {
+        this.exitFullscreen()
+      } else {
+        this.goBack()
+      }
+    }
   },
 })
 

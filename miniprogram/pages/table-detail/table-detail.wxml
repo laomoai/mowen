@@ -1,4 +1,4 @@
-<view class="detail-page {{isFullscreen ? 'fullscreen' : ''}}">
+<view class="detail-page {{isFullscreen ? 'fullscreen' : ''}}" capture-bind:touchstart="onTouchStart" capture-bind:touchend="onTouchEnd">
   <view wx:if="{{!isFullscreen}}" class="detail-nav" style="height: {{navHeight}}px; padding-top: {{menuTop}}px;">
     <view class="detail-nav-inner" style="height: {{menuHeight}}px;">
       <view class="detail-back" bindtap="goBack"></view>

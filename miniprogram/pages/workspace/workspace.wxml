@@ -1,4 +1,4 @@
-<view class="page workspace-page">
+<view class="page workspace-page" capture-bind:touchstart="onTouchStart" capture-bind:touchend="onTouchEnd">
   <view class="workspace-nav" style="height: {{navHeight}}px; padding-top: {{menuTop}}px;">
     <view class="workspace-nav-inner" style="height: {{menuHeight}}px;">
       <view wx:if="{{stack.length === 0}}" class="workspace-avatar nav-avatar" style="width: {{avatarSize}}px; height: {{avatarSize}}px;" bindtap="openSettings">
@@ -21,10 +21,11 @@
   <view class="folder-list">
     <view wx:for="{{folders}}" wx:key="id" class="folder-card" bindtap="openNode" data-id="{{item.id}}">
       <view class="folder-icon {{item.theme}}">
-        <view class="folder-line"></view>
+        <view wx:if="{{item.displayIcon}}" class="folder-icon-text">{{item.displayIcon}}</view>
+        <view wx:else class="folder-line"></view>
       </view>
       <view class="folder-copy">
-        <view class="folder-name"><text wx:if="{{item.displayIcon}}" class="folder-emoji">{{item.displayIcon}}</text>{{item.title}}</view>
+        <view class="folder-name">{{item.displayTitle}}</view>
         <view class="folder-count">{{item.countText}}</view>
       </view>
       <view class="chevron"></view>
@@ -39,7 +40,7 @@
     <view wx:for="{{files}}" wx:key="id" class="file-card" bindtap="openNode" data-id="{{item.id}}">
       <view class="file-icon {{item.theme}}">{{item.ext}}</view>
       <view class="file-copy">
-        <view class="file-name">{{item.title}}</view>
+        <view class="file-name">{{item.displayTitle}}</view>
         <view class="file-meta">{{item.meta}}</view>
       </view>
       <view class="more-dot">•••</view>

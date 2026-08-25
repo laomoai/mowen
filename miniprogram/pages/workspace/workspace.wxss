@@ -134,6 +134,16 @@
   box-sizing: border-box;
 }
 
+.folder-icon-text {
+  max-width: 72rpx;
+  overflow: hidden;
+  text-align: center;
+  font-size: 36rpx;
+  line-height: 44rpx;
+  font-weight: 700;
+  color: #101311;
+}
+
 .folder-copy,
 .file-copy {
   min-width: 0;
@@ -145,10 +155,6 @@
   line-height: 46rpx;
   font-weight: 500;
   color: #101311;
-}
-
-.folder-emoji {
-  margin-right: 10rpx;
 }
 
 .folder-count {

@@ -40,6 +40,16 @@ function formatIcon(icon, kind) {
   return ION_ICON_TEXT[name] || iconByKeyword(name) || defaultIcon(kind) || '◇'
 }
 
+function titleWithoutIcon(title, rawIcon, kind) {
+  const value = String(title || '未命名').trim()
+  const icon = formatIcon(rawIcon, kind)
+  const raw = String(rawIcon || '').trim()
+  const prefixes = [icon, raw].filter(Boolean)
+  const prefix = prefixes.find((item) => value !== item && value.startsWith(item))
+  if (prefix) return value.slice(prefix.length).trim()
+  return value
+}
+
 function iconByKeyword(name) {
   const value = String(name || '').replace(/Outline$/, '')
   if (/Chart|Analytics|Trending|Pulse|Stats|Bar/.test(value)) return '📊'
@@ -75,5 +85,6 @@ function defaultIcon(kind) {
 
 module.exports = {
   formatIcon,
+  titleWithoutIcon,
   defaultIcon,
 }
