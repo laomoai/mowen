@@ -251,3 +251,13 @@
   margin-top: 24rpx;
   border-radius: 8rpx;
 }
+
+.mw-image-missing {
+  margin-top: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 8rpx;
+  background: #f7f3ee;
+  color: #8a5b22;
+  font-size: 26rpx;
+  line-height: 38rpx;
+}

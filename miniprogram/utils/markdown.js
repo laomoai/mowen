@@ -31,12 +31,22 @@ function parseMarkdown(content, resolveImageUrl) {
 
     const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
     if (imageMatch) {
+      const alt = imageMatch[1]
+      const src = imageMatch[2]
+      if (!/^(https?:|data:|wxfile:|\/)/.test(src)) {
+        nodes.push({
+          name: 'p',
+          attrs: { class: 'mw-image-missing' },
+          children: [{ type: 'text', text: `图片未同步：${alt || src}` }],
+        })
+        continue
+      }
       nodes.push({
         name: 'img',
         attrs: {
           class: 'mw-image',
-          alt: imageMatch[1],
-          src: resolveImageUrl ? resolveImageUrl(imageMatch[2]) : imageMatch[2],
+          alt,
+          src: resolveImageUrl ? resolveImageUrl(src) : src,
           style: 'max-width:100%;height:auto;border-radius:8px;margin-top:12px;',
         },
       })

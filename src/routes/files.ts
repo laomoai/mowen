@@ -82,6 +82,9 @@ files.get('/sign', async (c) => {
   if (!key) return c.json({ error: { message: 'Missing key' } }, 400)
   const viewer = await resolveViewer(c)
   if (!viewer) return c.json({ error: { code: 'UNAUTHORIZED', message: '请先登录' } }, 401)
+  if (await c.env.BUCKET.size(key) === null) {
+    return c.json({ error: { code: 'FILE_NOT_FOUND', message: 'File not found' } }, 404)
+  }
   const meta = await getFileMeta(c.env.DB, key)
   if (!(await canReadStoredFile(c.env.DB, meta, viewer))) {
     return c.json({ error: { code: 'FORBIDDEN', message: '无权查看此文件' } }, 403)
