@@ -28,7 +28,7 @@ Page({
       profileName: (config.user && config.user.name) || '墨问用户',
       profileInitial: initialOf((config.user && config.user.name) || '墨问用户'),
       profileEmail: (config.user && config.user.email) || '',
-      profilePicture: absoluteUrl(config, config.user && config.user.picture),
+      profilePicture: avatarUrl(config, config.user),
       workspaceTitle: (config.team && config.team.name) || (config.workspace && config.workspace.title) || '个人写作空间',
       workspaceSubtitle: workspaceSubtitle(config),
     })
@@ -63,7 +63,7 @@ Page({
         profileName: (data.user && data.user.name) || '墨问用户',
         profileInitial: initialOf((data.user && data.user.name) || '墨问用户'),
         profileEmail: (data.user && data.user.email) || '',
-        profilePicture: absoluteUrl(nextConfig, data.user && data.user.picture),
+        profilePicture: avatarUrl(nextConfig, data.user),
         workspaceTitle: (data.team && data.team.name) || (data.workspace && data.workspace.title) || '个人写作空间',
         workspaceSubtitle: workspaceSubtitle(nextConfig),
       })
@@ -103,6 +103,13 @@ function absoluteUrl(config, value) {
   if (/^https?:/.test(value)) return value
   const baseUrl = config && config.baseUrl ? String(config.baseUrl).replace(/\/+$/, '') : ''
   return `${baseUrl}${String(value).startsWith('/') ? value : `/${value}`}`
+}
+
+function avatarUrl(config, user) {
+  const email = user && user.email ? String(user.email).trim().toLowerCase() : 'user'
+  const picture = user && user.picture ? String(user.picture).trim() : ''
+  if (picture && !picture.includes('/api/avatars/')) return absoluteUrl(config, picture)
+  return absoluteUrl(config, `/api/avatars/${encodeURIComponent(email || 'user')}?v=color`)
 }
 
 function initialOf(value) {

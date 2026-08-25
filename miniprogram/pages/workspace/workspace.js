@@ -93,7 +93,7 @@ Page({
   refreshAvatar() {
     const config = getConfig()
     this.setData({
-      avatarUrl: absoluteUrl(config, config && config.user && config.user.picture),
+      avatarUrl: avatarUrl(config, config && config.user),
     })
   },
 
@@ -179,4 +179,11 @@ function absoluteUrl(config, value) {
   if (/^https?:/.test(value)) return value
   const baseUrl = config && config.baseUrl ? String(config.baseUrl).replace(/\/+$/, '') : ''
   return `${baseUrl}${String(value).startsWith('/') ? value : `/${value}`}`
+}
+
+function avatarUrl(config, user) {
+  const email = user && user.email ? String(user.email).trim().toLowerCase() : 'user'
+  const picture = user && user.picture ? String(user.picture).trim() : ''
+  if (picture && !picture.includes('/api/avatars/')) return absoluteUrl(config, picture)
+  return absoluteUrl(config, `/api/avatars/${encodeURIComponent(email || 'user')}?v=color`)
 }
