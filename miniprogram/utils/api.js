@@ -45,11 +45,11 @@ function validateConnection(baseUrl, apiKey) {
 }
 
 function getWorkspaceTree() {
-  return request('/api/workspace/tree')
+  return request('/api/viewer/workspace')
 }
 
 function getNote(id) {
-  return request(`/api/notes/${encodeURIComponent(id)}`)
+  return request(`/api/viewer/notes/${encodeURIComponent(id)}`)
 }
 
 function getViewerRecords(tableName, params = {}) {

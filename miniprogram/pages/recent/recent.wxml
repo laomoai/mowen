@@ -4,7 +4,9 @@
     <view>搜索...</view>
   </view>
 
-  <view class="recent-list">
+  <view wx:if="{{items.length === 0}}" class="recent-empty">打开过的文件会出现在这里</view>
+
+  <view wx:else class="recent-list">
     <view wx:for="{{items}}" wx:key="key" class="recent-card" bindtap="openRecent" data-key="{{item.key}}">
       <view class="recent-emoji">{{item.iconText}}</view>
       <view class="recent-main">

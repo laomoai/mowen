@@ -58,6 +58,14 @@
   gap: 24rpx;
 }
 
+.workspace-empty {
+  padding: 42rpx 0;
+  text-align: center;
+  color: #8a9189;
+  font-size: 28rpx;
+  line-height: 40rpx;
+}
+
 .folder-card,
 .file-card {
   background: #ffffff;

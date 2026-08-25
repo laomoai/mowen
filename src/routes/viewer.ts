@@ -8,10 +8,12 @@ import {
   expandTablesAcrossFolders,
   filterVisibleNodes,
   listWorkspaceNodes,
+  type WorkspaceNode,
 } from '../utils/workspace'
-import { getAccessibleNoteIds } from '../utils/note-access'
+import { canAccessNote, getAccessibleNoteIds } from '../utils/note-access'
 import { ensureFieldMeta } from './fields'
 import { signFileUrl } from '../utils/files'
+import { teamFilter } from '../middleware/auth'
 
 const viewer = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -26,17 +28,7 @@ type ViewerField = {
 const BLOCKED_FIELD_TYPES = new Set(['password', 'totp'])
 
 viewer.get('/me', async (c) => {
-  await backfillMissingGroupFolders(c.env.DB, c.get('teamId'))
-  await backfillTableFolderParents(c.env.DB, c.get('teamId'))
-  const rawNodes = await listWorkspaceNodes(c.env.DB, c.get('teamId'))
-  const nodes = await expandTablesAcrossFolders(c.env.DB, c.get('teamId'), rawNodes)
-  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
-  const visible = filterVisibleNodes(
-    nodes,
-    c.get('allowedTables') ?? null,
-    allowedNoteIds,
-    c.get('allowedGroupIds') ?? null,
-  )
+  const visible = await getVisibleWorkspaceNodes(c)
 
   return c.json({
     data: {
@@ -50,6 +42,44 @@ viewer.get('/me', async (c) => {
       },
     },
   })
+})
+
+viewer.get('/workspace', async (c) => {
+  const visible = await getVisibleWorkspaceNodes(c)
+  return c.json({ data: visible.map(toViewerWorkspaceNode) })
+})
+
+viewer.get('/notes/:id', async (c) => {
+  const id = c.req.param('id')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
+
+  const { clause, params } = teamFilter(c.get('teamId'))
+  const row = await c.env.DB.prepare(
+    `SELECT id, title, content, icon, parent_id, sort_order, created_at, updated_at, cover, description
+     FROM _notes
+     WHERE id = ? AND ${clause} AND deleted_at IS NULL AND archived_at IS NULL`,
+  ).bind(id, ...params)
+    .first<{
+      id: string
+      title: string
+      content: string
+      icon: string | null
+      parent_id: string | null
+      sort_order: number
+      created_at: number
+      updated_at: number
+      cover: string | null
+      description: string | null
+    }>()
+
+  if (!row) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
+  }
+
+  return c.json({ data: row })
 })
 
 viewer.get('/tables/:tableName/records', async (c) => {
@@ -168,6 +198,35 @@ async function assertTableAccess(
   }
 
   return null
+}
+
+async function getVisibleWorkspaceNodes(
+  c: Context<{ Bindings: Env; Variables: AuthVariables }>,
+): Promise<WorkspaceNode[]> {
+  await backfillMissingGroupFolders(c.env.DB, c.get('teamId'))
+  await backfillTableFolderParents(c.env.DB, c.get('teamId'))
+  const rawNodes = await listWorkspaceNodes(c.env.DB, c.get('teamId'))
+  const nodes = await expandTablesAcrossFolders(c.env.DB, c.get('teamId'), rawNodes)
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  return filterVisibleNodes(
+    nodes,
+    c.get('allowedTables') ?? null,
+    allowedNoteIds,
+    c.get('allowedGroupIds') ?? null,
+  )
+}
+
+function toViewerWorkspaceNode(node: WorkspaceNode) {
+  return {
+    id: node.id,
+    kind: node.kind,
+    parent_id: node.parent_id,
+    sort_order: node.sort_order,
+    title: node.title,
+    ref: node.ref,
+    group_id: node.group_id,
+    icon: node.icon,
+  }
 }
 
 function buildSafeFields(fields: ViewerField[], allColumns: string[]): ViewerField[] {

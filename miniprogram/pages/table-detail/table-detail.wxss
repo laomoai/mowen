@@ -337,7 +337,7 @@
 }
 
 .data-table {
-  width: 790rpx;
+  min-width: 790rpx;
 }
 
 .fullscreen .data-table {
@@ -386,6 +386,10 @@
   line-height: 40rpx;
   color: #1b211d;
   box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fullscreen .table-cell {
@@ -425,6 +429,15 @@
   height: 7rpx;
   border-radius: 7rpx;
   background: #b9dcca;
+}
+
+.table-empty {
+  width: 100%;
+  padding: 88rpx 0;
+  text-align: center;
+  color: #8a9189;
+  font-size: 28rpx;
+  line-height: 40rpx;
 }
 
 .fullscreen .fake-scrollbar {

@@ -14,6 +14,7 @@
   <view class="section-row folders-title">
     <view class="section-heading">文件夹</view>
   </view>
+  <view wx:if="{{loading}}" class="workspace-empty">正在读取...</view>
   <view class="folder-list">
     <view wx:for="{{folders}}" wx:key="id" class="folder-card" bindtap="openNode" data-id="{{item.id}}">
       <view class="folder-icon {{item.theme}}">
@@ -41,4 +42,5 @@
       <view class="more-dot">•••</view>
     </view>
   </view>
+  <view wx:if="{{!loading && folders.length === 0 && files.length === 0}}" class="workspace-empty">暂无可阅读文件</view>
 </view>

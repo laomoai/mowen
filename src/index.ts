@@ -199,6 +199,83 @@ Skill：\`/agent/mowen/SKILL.md\``,
           },
         },
       },
+      '/api/viewer/workspace': {
+        get: {
+          summary: 'List visible workspace nodes for readonly mini program viewer',
+          description: 'Returns folder, table, and note nodes allowed by the API key scope. This is the readonly mini program equivalent of the workspace tree.',
+          responses: {
+            '200': {
+              description: 'Visible workspace nodes',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            kind: { type: 'string', enum: ['folder', 'table', 'note'] },
+                            parent_id: { type: 'string', nullable: true },
+                            sort_order: { type: 'integer' },
+                            title: { type: 'string' },
+                            ref: { type: 'string', nullable: true, description: 'Table name or note id for leaf nodes' },
+                            group_id: { type: 'integer', nullable: true },
+                            icon: { type: 'string', nullable: true },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Missing or invalid API key' },
+          },
+        },
+      },
+      '/api/viewer/notes/{id}': {
+        get: {
+          summary: 'Get one note for readonly mini program viewer',
+          description: 'Returns Markdown content and display metadata for one visible note. Editing fields and internal ownership fields are omitted.',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Readonly note detail',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          title: { type: 'string' },
+                          content: { type: 'string', description: 'Markdown content' },
+                          icon: { type: 'string', nullable: true },
+                          parent_id: { type: 'string', nullable: true },
+                          sort_order: { type: 'integer' },
+                          created_at: { type: 'integer' },
+                          updated_at: { type: 'integer' },
+                          cover: { type: 'string', nullable: true },
+                          description: { type: 'string', nullable: true },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '403': { description: 'Note not allowed by API key scope' },
+            '404': { description: 'Note not found' },
+          },
+        },
+      },
       '/api/viewer/tables/{tableName}/records': {
         get: {
           summary: 'List records for readonly mini program viewer',

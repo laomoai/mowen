@@ -6,6 +6,7 @@ Page({
     baseUrl: '',
     keyType: '',
     scope: '',
+    workspaceSubtitle: '基础版 · 已同步',
     loading: false,
   },
 
@@ -19,6 +20,7 @@ Page({
       baseUrl: config.baseUrl,
       keyType: config.keyType || '未知',
       scope: config.scope || '未知',
+      workspaceSubtitle: workspaceSubtitle(config),
     })
   },
 
@@ -59,3 +61,10 @@ Page({
     })
   },
 })
+
+function workspaceSubtitle(config) {
+  const workspace = config.workspace || {}
+  const total = Number(workspace.folder_count || 0) + Number(workspace.note_count || 0) + Number(workspace.table_count || 0)
+  const scope = config.scope === 'groups' ? '文件夹授权' : '全部授权'
+  return `${scope} · ${total} 个项目`
+}

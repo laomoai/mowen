@@ -1,4 +1,5 @@
 const { rememberNode } = require('../../utils/recent')
+const { getWorkspaceTree } = require('../../utils/api')
 
 Page({
   data: {
@@ -7,15 +8,8 @@ Page({
     menuHeight: 32,
     navHeight: 88,
     avatarSize: 30,
-    loading: false,
-    nodes: [
-      { id: 'folder-1', kind: 'folder', title: '工作汇报', count: 12, theme: 'blue' },
-      { id: 'folder-2', kind: 'folder', title: '项目协同', count: 8, theme: 'green' },
-      { id: 'folder-3', kind: 'folder', title: '设计资产', count: 24, theme: 'red' },
-      { id: 'file-1', kind: 'note', ref: 'summary', title: '2023年度总结报告.docx', meta: '10月24日 · 2.4 MB', ext: '', theme: 'doc' },
-      { id: 'file-2', kind: 'table', ref: 'finance', title: 'Q4财务预算及开支明细.xlsx', meta: '10月20日 · 1.1 MB', ext: '', theme: 'sheet' },
-      { id: 'file-3', kind: 'note', ref: 'manual', title: '产品V2.0设计规范手册.pdf', meta: '10月18日 · 8.5 MB', ext: 'PDF', theme: 'pdf' },
-    ],
+    loading: true,
+    nodes: [],
     folders: [],
     files: [],
     stack: [],
@@ -26,7 +20,7 @@ Page({
   onShow() {
     this.syncNavMetrics()
     this.setTabSelected()
-    this.refreshItems()
+    this.loadWorkspace()
   },
 
   syncNavMetrics() {
@@ -50,10 +44,37 @@ Page({
     }
   },
 
+  async loadWorkspace() {
+    this.setData({ loading: true })
+    try {
+      const res = await getWorkspaceTree()
+      const nodes = normalizeNodes(res.data || [])
+      this.setData({ loading: false, nodes })
+      this.refreshItems()
+    } catch (err) {
+      this.setData({ loading: false, nodes: [], folders: [], files: [] })
+      wx.showToast({ title: err.message || '加载失败', icon: 'none' })
+    }
+  },
+
   refreshItems() {
+    const nodes = this.data.nodes
     this.setData({
-      folders: this.data.nodes.filter((node) => node.kind === 'folder'),
-      files: this.data.nodes.filter((node) => node.kind !== 'folder'),
+      folders: nodes
+        .filter((node) => node.kind === 'folder' && !node.parent_id)
+        .map((node, index) => ({
+          ...node,
+          count: countFolderItems(nodes, node.id),
+          theme: folderTheme(index),
+        })),
+      files: nodes
+        .filter((node) => node.kind !== 'folder')
+        .map((node) => ({
+          ...node,
+          meta: node.kind === 'table' ? '表格' : 'MD 文档',
+          ext: node.kind === 'table' ? '' : '',
+          theme: node.kind === 'table' ? 'sheet' : 'doc',
+        })),
     })
   },
 
@@ -66,7 +87,7 @@ Page({
     const node = this.data.nodes.find((item) => item.id === id)
     if (!node) return
     if (node.kind === 'folder') {
-      wx.showToast({ title: '静态预览', icon: 'none' })
+      wx.showToast({ title: `${node.count || 0} 个项目`, icon: 'none' })
       return
     }
     rememberNode(node)
@@ -77,3 +98,42 @@ Page({
     }
   },
 })
+
+function normalizeNodes(nodes) {
+  return nodes
+    .map((node) => ({
+      ...node,
+      id: String(node.id || ''),
+      parent_id: node.parent_id || null,
+      ref: node.ref || node.id,
+      title: node.title || '未命名',
+      sort_order: Number(node.sort_order || 0),
+    }))
+    .filter((node) => node.id && node.kind)
+    .sort((a, b) => a.sort_order - b.sort_order)
+}
+
+function countFolderItems(nodes, folderId) {
+  const childMap = new Map()
+  nodes.forEach((node) => {
+    if (!node.parent_id) return
+    const list = childMap.get(node.parent_id) || []
+    list.push(node)
+    childMap.set(node.parent_id, list)
+  })
+  let count = 0
+  const queue = [...(childMap.get(folderId) || [])]
+  while (queue.length) {
+    const node = queue.shift()
+    if (node.kind === 'folder') {
+      queue.push(...(childMap.get(node.id) || []))
+    } else {
+      count += 1
+    }
+  }
+  return count
+}
+
+function folderTheme(index) {
+  return ['blue', 'green', 'red'][index % 3]
+}

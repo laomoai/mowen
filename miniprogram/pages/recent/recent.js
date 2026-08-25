@@ -1,16 +1,13 @@
+const { getRecent } = require('../../utils/storage')
+
 Page({
   data: {
-    items: [
-      { key: 'ux', kind: 'note', ref: 'ux', iconText: '📖', title: 'The Impact of AI on the UX Design Process', meta: '今天 09:41 修改  ·  @UX Research Team 前修改' },
-      { key: 'design', kind: 'note', ref: 'design', iconText: '🎨', title: 'Design System Q4 Update Guidelines', meta: '昨天 16:30 修改  ·  @Sarah Jenkins 前修改' },
-      { key: 'feedback', kind: 'table', ref: 'feedback', iconText: '📊', title: 'Q3 User Feedback Synthesis & Analysis', meta: '10月24日创建  ·  @ILEARNMORE.CN 前修改' },
-      { key: 'growth', kind: 'note', ref: 'growth', iconText: '🌱', title: 'Personal Growth: 2024 Goals', meta: '10月15日创建  ·  仅自己可见' },
-      { key: 'launch', kind: 'table', ref: 'launch', iconText: '🚀', title: 'Product Launch Checklist – MVP', meta: '10月12日创建  ·  @Mike Chen 前修改' },
-    ],
+    items: [],
   },
 
   onShow() {
     this.setTabSelected()
+    this.loadRecent()
   },
 
   setTabSelected() {
@@ -35,4 +32,39 @@ Page({
       wx.navigateTo({ url: `/pages/record-detail/record-detail?table=${encodeURIComponent(item.tableName)}&id=${encodeURIComponent(item.ref)}&title=${encodeURIComponent(item.title || '')}` })
     }
   },
+
+  loadRecent() {
+    const items = getRecent().map((entry) => ({
+      ...entry,
+      iconText: iconForKind(entry.kind, entry.icon),
+      meta: metaForEntry(entry),
+    }))
+    this.setData({ items })
+  },
 })
+
+function iconForKind(kind, icon) {
+  if (icon) return icon
+  if (kind === 'table') return '▦'
+  if (kind === 'record') return '#'
+  return '▤'
+}
+
+function metaForEntry(entry) {
+  const kindText = entry.kind === 'table' ? '表格' : entry.kind === 'record' ? '记录' : 'MD'
+  return `${formatVisitedAt(entry.visitedAt)}访问  ·  ${kindText}`
+}
+
+function formatVisitedAt(value) {
+  const date = new Date(value || Date.now())
+  const now = new Date()
+  const sameDay = date.toDateString() === now.toDateString()
+  if (sameDay) {
+    return `今天 ${pad(date.getHours())}:${pad(date.getMinutes())} `
+  }
+  return `${date.getMonth() + 1}月${date.getDate()}日 `
+}
+
+function pad(value) {
+  return String(value).padStart(2, '0')
+}

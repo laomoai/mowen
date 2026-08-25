@@ -1,3 +1,6 @@
+const { getViewerRecords } = require('../../utils/api')
+const { rememberNode, rememberRecord } = require('../../utils/recent')
+
 Page({
   data: {
     menuTop: 48,
@@ -6,19 +9,17 @@ Page({
     isFullscreen: false,
     tableName: '',
     title: '季度财务报表',
-    rows: [
-      { month: '7月', income: '125,000', expense: '82,400', profit: '42,600' },
-      { month: '8月', income: '142,500', expense: '91,200', profit: '51,300' },
-      { month: '9月', income: '158,200', expense: '105,800', profit: '52,400' },
-      { month: '10月', income: '134,800', expense: '89,500', profit: '45,300' },
-    ],
+    fields: [],
+    rows: [],
     nextCursor: '',
-    loading: false,
+    loading: true,
   },
 
   onLoad(options) {
-    this.setData({ tableName: options.table || '' })
+    const title = options.title ? decodeURIComponent(options.title) : '表格'
+    this.setData({ tableName: options.table || '', title })
     this.syncNavMetrics()
+    this.loadRows()
   },
 
   onUnload() {
@@ -74,4 +75,83 @@ Page({
       },
     })
   },
+
+  async loadRows() {
+    if (!this.data.tableName) return
+    this.setData({ loading: true })
+    try {
+      const res = await getViewerRecords(this.data.tableName, { page_size: 50 })
+      const fields = normalizeFields(res.fields || [])
+      const rows = normalizeRows(res.data || [], fields)
+      rememberNode({ kind: 'table', ref: this.data.tableName, title: this.data.title })
+      this.setData({
+        loading: false,
+        fields,
+        rows,
+        nextCursor: res.meta && res.meta.next_cursor ? res.meta.next_cursor : '',
+      })
+    } catch (err) {
+      this.setData({ loading: false, fields: [], rows: [] })
+      wx.showToast({ title: err.message || '加载失败', icon: 'none' })
+    }
+  },
+
+  openRecord(event) {
+    const id = event.currentTarget.dataset.id
+    const row = this.data.rows.find((item) => String(item.id) === String(id))
+    if (!row || !id) return
+    const title = row.title || `#${id}`
+    rememberRecord(this.data.tableName, row.raw, title)
+    wx.navigateTo({
+      url: `/pages/record-detail/record-detail?table=${encodeURIComponent(this.data.tableName)}&id=${encodeURIComponent(id)}&title=${encodeURIComponent(title)}`,
+    })
+  },
 })
+
+function normalizeFields(fields) {
+  const visible = fields.filter((field) => field.column_name !== 'id')
+  const picked = visible.length ? visible : fields
+  return picked.map((field, index) => ({
+    ...field,
+    title: field.title || field.column_name,
+    className: index === 0 ? 'month' : valueClass(field),
+  }))
+}
+
+function normalizeRows(records, fields) {
+  return records.map((record) => {
+    const values = fields.map((field) => ({
+      key: field.column_name,
+      value: stringifyValue(record[field.column_name], field.field_type),
+      className: field.className,
+    }))
+    return {
+      id: record.id,
+      raw: record,
+      title: firstTitle(record, fields),
+      values,
+    }
+  })
+}
+
+function firstTitle(record, fields) {
+  const field = fields.find((item) => record[item.column_name] != null && record[item.column_name] !== '')
+  return field ? stringifyValue(record[field.column_name], field.field_type) : `#${record.id}`
+}
+
+function valueClass(field) {
+  return field.field_type === 'currency' || field.field_type === 'number' || field.field_type === 'percent'
+    ? 'profit'
+    : ''
+}
+
+function stringifyValue(value, fieldType) {
+  if (value == null || value === '') return '空'
+  if (fieldType === 'checkbox') return value ? '是' : '否'
+  if (fieldType === 'image') {
+    if (value && typeof value === 'object') return value.title || value.name || '[图片]'
+    return '[图片]'
+  }
+  if (typeof value === 'object') return value.title || value.name || value.display || JSON.stringify(value)
+  return String(value)
+}

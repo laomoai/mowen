@@ -140,9 +140,19 @@
 
 .md-content {
   padding: 6rpx 32rpx 48rpx;
+  display: block;
 }
 
-.md-h1 {
+.md-empty {
+  padding: 56rpx 32rpx;
+  text-align: center;
+  font-size: 28rpx;
+  line-height: 40rpx;
+  color: #8a9189;
+}
+
+.md-h1,
+.mw-h1 {
   margin-top: 18rpx;
   font-size: 37rpx;
   line-height: 52rpx;
@@ -150,7 +160,8 @@
   color: #111312;
 }
 
-.md-h2 {
+.md-h2,
+.mw-h2 {
   margin-top: 40rpx;
   font-size: 31rpx;
   line-height: 44rpx;
@@ -158,14 +169,24 @@
   color: #24372a;
 }
 
-.md-p {
+.mw-h3 {
+  margin-top: 34rpx;
+  font-size: 29rpx;
+  line-height: 42rpx;
+  font-weight: 800;
+  color: #26362b;
+}
+
+.md-p,
+.mw-p {
   margin-top: 18rpx;
   font-size: 29rpx;
   line-height: 52rpx;
   color: #324135;
 }
 
-.md-list-item {
+.md-list-item,
+.mw-li {
   position: relative;
   margin-top: 18rpx;
   padding-left: 34rpx;
@@ -185,7 +206,8 @@
   background: #007a3d;
 }
 
-.md-quote {
+.md-quote,
+.mw-quote {
   margin-top: 34rpx;
   padding: 22rpx 24rpx;
   border-left: 8rpx solid #11c567;
@@ -193,4 +215,34 @@
   color: #334b38;
   font-size: 28rpx;
   line-height: 46rpx;
+}
+
+.mw-code {
+  display: block;
+  margin-top: 26rpx;
+  padding: 24rpx;
+  border-radius: 8rpx;
+  background: #f2f3f1;
+  color: #1f2a23;
+  font-size: 24rpx;
+  line-height: 38rpx;
+  white-space: pre-wrap;
+}
+
+.mw-inline-code {
+  padding: 2rpx 8rpx;
+  border-radius: 6rpx;
+  background: #eef2ef;
+  color: #007a3d;
+  font-size: 25rpx;
+}
+
+.mw-link {
+  color: #007a3d;
+}
+
+.mw-image {
+  max-width: 100%;
+  margin-top: 24rpx;
+  border-radius: 8rpx;
 }

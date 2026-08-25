@@ -28,6 +28,10 @@ async function main() {
   ).run()
   await db.prepare(`INSERT INTO _meta (table_name, title, row_count) VALUES (?, ?, ?)`)
     .bind('tbl_viewer', 'Viewer Smoke', 1).run()
+  await db.prepare(`INSERT INTO _groups (name, sort_order) VALUES (?, ?)`)
+    .bind('Viewer Folder', 0).run()
+  await db.prepare(`INSERT INTO _group_tables (group_id, table_name) VALUES (?, ?)`)
+    .bind(1, 'tbl_viewer').run()
   await db.prepare(
     `INSERT INTO _field_meta (table_name, column_name, title, field_type, order_index, width, is_hidden) VALUES
       ('tbl_viewer', 'id', 'ID', 'number', 0, 80, 0),
@@ -40,6 +44,16 @@ async function main() {
   ).run()
   await db.prepare(`INSERT INTO tbl_viewer (title, public_note, secret, otp, hidden_text) VALUES (?, ?, ?, ?, ?)`)
     .bind('hello', 'visible', 'should-not-return', 'totp-secret', 'hidden-value').run()
+  await db.prepare(`INSERT INTO _notes (id, title, content, sort_order) VALUES (?, ?, ?, ?)`)
+    .bind('note_viewer', 'Viewer Note', '# Visible Note\n\nThis is readonly markdown.', 0).run()
+  await db.prepare(
+    `INSERT INTO _workspace_nodes (id, kind, parent_id, sort_order, title, ref)
+     VALUES (?, 'note', NULL, 10, ?, ?)`,
+  ).bind('wn_n_note_viewer', 'Viewer Note', 'note_viewer').run()
+  await db.prepare(
+    `INSERT INTO _workspace_nodes (id, kind, parent_id, sort_order, title, ref)
+     VALUES (?, 'table', NULL, 20, ?, ?)`,
+  ).bind('wn_t_tbl_viewer', 'Viewer Smoke', 'tbl_viewer').run()
 
   const env = {
     DB: db,
@@ -56,6 +70,11 @@ async function main() {
   const headers = { 'X-API-Key': 'test-admin-key' }
 
   await assertOk('/api/viewer/me', env, executionCtx, headers)
+  const workspace = await assertOk('/api/viewer/workspace', env, executionCtx, headers)
+  assertHasWorkspaceNode(workspace, 'table', 'tbl_viewer')
+  assertHasWorkspaceNode(workspace, 'note', 'note_viewer')
+  const note = await assertOk('/api/viewer/notes/note_viewer', env, executionCtx, headers)
+  if (!JSON.stringify(note).includes('Visible Note')) throw new Error('viewer note did not return markdown content')
   const list = await assertOk('/api/viewer/tables/tbl_viewer/records?page_size=20', env, executionCtx, headers)
   assertNoSecrets(list, 'viewer list')
   const detail = await assertOk(
@@ -68,6 +87,8 @@ async function main() {
   const openapi = await assertOk('/api/openapi.json', env, executionCtx, {})
   for (const pathName of [
     '/api/viewer/me',
+    '/api/viewer/workspace',
+    '/api/viewer/notes/{id}',
     '/api/viewer/tables/{tableName}/records',
     '/api/viewer/tables/{tableName}/records/{id}',
   ]) {
@@ -95,6 +116,13 @@ function assertNoSecrets(body: unknown, label: string) {
   const text = JSON.stringify(body)
   for (const secret of ['should-not-return', 'totp-secret', 'hidden-value']) {
     if (text.includes(secret)) throw new Error(`${label} leaked ${secret}`)
+  }
+}
+
+function assertHasWorkspaceNode(body: unknown, kind: string, ref: string) {
+  const data = (body as { data?: Array<{ kind?: string; ref?: string }> }).data ?? []
+  if (!data.some((node) => node.kind === kind && node.ref === ref)) {
+    throw new Error(`viewer workspace is missing ${kind}:${ref}`)
   }
 }
 
