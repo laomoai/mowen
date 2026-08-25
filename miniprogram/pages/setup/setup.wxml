@@ -4,7 +4,6 @@
   </view>
 
   <view class="setup-title">连接墨问知识空间</view>
-  <view class="setup-copy">在 Web 版创建只读 API Key，推荐只授权需要在小程序阅读的文件夹。</view>
 
   <view class="setup-card">
     <view class="field api-field">

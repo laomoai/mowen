@@ -7,20 +7,17 @@
 }
 
 .setup-logo {
-  width: 136rpx;
-  height: 136rpx;
-  margin: 0 auto 42rpx;
-  border-radius: 28rpx;
-  background: #ffffff;
+  width: 92rpx;
+  height: 92rpx;
+  margin: 0 auto 34rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14rpx 42rpx rgba(24, 31, 27, .08);
 }
 
 .mowen-logo-image {
-  width: 88rpx;
-  height: 88rpx;
+  width: 92rpx;
+  height: 92rpx;
 }
 
 .setup-title {
@@ -28,15 +25,7 @@
   font-size: 38rpx;
   line-height: 52rpx;
   font-weight: 900;
-}
-
-.setup-copy {
-  width: 430rpx;
-  margin: 18rpx auto 58rpx;
-  text-align: center;
-  color: #58615a;
-  font-size: 27rpx;
-  line-height: 40rpx;
+  margin-bottom: 58rpx;
 }
 
 .setup-card {
