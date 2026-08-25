@@ -59,12 +59,20 @@ async function signMarkdownImages(markdown) {
 
   const replacements = {}
   await Promise.all(sources.map(async (src) => {
-    if (/^(https?:|data:|wxfile:)/.test(src)) return
-    if (src.startsWith('/')) {
-      replacements[src] = absoluteUrl(src)
-      return
-    }
+    if (/^(data:|wxfile:)/.test(src)) return
     try {
+      const fileKey = fileKeyFromSource(src)
+      if (fileKey) {
+        const res = await signFile(fileKey)
+        const signed = res.data && res.data.url
+        if (signed) replacements[src] = absoluteUrl(signed)
+        return
+      }
+      if (/^https?:/.test(src)) return
+      if (src.startsWith('/')) {
+        replacements[src] = absoluteUrl(src)
+        return
+      }
       const res = await signFile(src)
       const signed = res.data && res.data.url
       if (signed) replacements[src] = absoluteUrl(signed)
@@ -76,6 +84,24 @@ async function signMarkdownImages(markdown) {
   return Object.keys(replacements).reduce((text, src) => {
     return text.split(`(${src})`).join(`(${replacements[src]})`)
   }, markdown)
+}
+
+function fileKeyFromSource(src) {
+  const value = String(src || '')
+  const path = pathFromSource(value)
+  const match = path.match(/^\/api\/files\/(.+)$/)
+  if (!match) return ''
+  return decodeURIComponent(match[1].split('?')[0])
+}
+
+function pathFromSource(value) {
+  if (value.startsWith('/')) return value
+  if (!/^https?:/.test(value)) return value
+  try {
+    return new URL(value).pathname
+  } catch (err) {
+    return value
+  }
 }
 
 function absoluteUrl(value) {
