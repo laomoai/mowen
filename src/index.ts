@@ -44,7 +44,7 @@ app.get('/api/health', (c) =>
 
 // ── OpenAPI JSON 文档（无需认证，供 AI Agent 读取）──────────────
 app.get('/api/openapi.json', (c) => {
-  const serverUrl = new URL(c.req.url).origin
+  const serverUrl = requestOrigin(c)
   return c.json(openApiSpec(serverUrl))
 })
 
@@ -99,6 +99,16 @@ app.route('/api/viewer', viewerRouter)
 export { app }
 
 // ── OpenAPI 3.0 Spec ──────────────────────────────────────────
+function requestOrigin(c: { req: { header(name: string): string | undefined; url: string } }): string {
+  const url = new URL(c.req.url)
+  const forwardedProto = c.req.header('X-Forwarded-Proto')?.split(',')[0]?.trim()
+  const forwardedHost = c.req.header('X-Forwarded-Host')?.split(',')[0]?.trim()
+    || c.req.header('Host')?.split(',')[0]?.trim()
+  const proto = forwardedProto || url.protocol.replace(/:$/, '')
+  const host = forwardedHost || url.host
+  return `${proto}://${host}`
+}
+
 function openApiSpec(serverUrl: string) {
   return {
     openapi: '3.0.0',
