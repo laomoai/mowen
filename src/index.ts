@@ -190,9 +190,28 @@ Skill：\`/agent/mowen/SKILL.md\``,
                           ok: { type: 'boolean' },
                           key_type: { type: 'string', enum: ['readonly', 'readwrite'] },
                           scope: { type: 'string', enum: ['all', 'groups'] },
+                          user: {
+                            type: 'object',
+                            nullable: true,
+                            properties: {
+                              id: { type: 'integer' },
+                              email: { type: 'string' },
+                              name: { type: 'string' },
+                              picture: { type: 'string', nullable: true },
+                            },
+                          },
+                          team: {
+                            type: 'object',
+                            nullable: true,
+                            properties: {
+                              id: { type: 'integer' },
+                              name: { type: 'string' },
+                            },
+                          },
                           workspace: {
                             type: 'object',
                             properties: {
+                              title: { type: 'string' },
                               folder_count: { type: 'integer' },
                               note_count: { type: 'integer' },
                               table_count: { type: 'integer' },
@@ -234,6 +253,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
                             ref: { type: 'string', nullable: true, description: 'Table name or note id for leaf nodes' },
                             group_id: { type: 'integer', nullable: true },
                             icon: { type: 'string', nullable: true },
+                            row_count: { type: 'integer', nullable: true, description: 'Table row count for table nodes; null for folders and notes' },
                           },
                         },
                       },
@@ -307,6 +327,15 @@ Skill：\`/agent/mowen/SKILL.md\``,
                     type: 'object',
                     properties: {
                       data: { type: 'array', items: { type: 'object' } },
+                      table: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string' },
+                          title: { type: 'string' },
+                          icon: { type: 'string', nullable: true },
+                          row_count: { type: 'integer', nullable: true },
+                        },
+                      },
                       fields: {
                         type: 'array',
                         items: {
@@ -347,6 +376,15 @@ Skill：\`/agent/mowen/SKILL.md\``,
                     type: 'object',
                     properties: {
                       data: { type: 'object' },
+                      table: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string' },
+                          title: { type: 'string' },
+                          icon: { type: 'string', nullable: true },
+                          row_count: { type: 'integer', nullable: true },
+                        },
+                      },
                       fields: {
                         type: 'array',
                         items: {

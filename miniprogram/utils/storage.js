@@ -14,17 +14,32 @@ function clearConfig() {
 }
 
 function getRecent() {
-  return wx.getStorageSync(RECENT_KEY) || []
+  return wx.getStorageSync(currentRecentKey()) || []
 }
 
 function addRecent(item) {
   const current = getRecent()
   const next = [item, ...current.filter((entry) => entry.key !== item.key)].slice(0, 30)
-  wx.setStorageSync(RECENT_KEY, next)
+  wx.setStorageSync(currentRecentKey(), next)
 }
 
 function clearRecent() {
-  wx.removeStorageSync(RECENT_KEY)
+  wx.removeStorageSync(currentRecentKey())
+}
+
+function currentRecentKey() {
+  const config = getConfig()
+  if (!config || !config.baseUrl || !config.apiKey) return `${RECENT_KEY}:anonymous`
+  return `${RECENT_KEY}:${hashText(`${config.baseUrl}|${config.apiKey}`)}`
+}
+
+function hashText(value) {
+  let hash = 5381
+  const text = String(value || '')
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash) ^ text.charCodeAt(i)
+  }
+  return (hash >>> 0).toString(36)
 }
 
 module.exports = {
@@ -34,4 +49,5 @@ module.exports = {
   getRecent,
   addRecent,
   clearRecent,
+  currentRecentKey,
 }

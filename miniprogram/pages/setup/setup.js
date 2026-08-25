@@ -5,6 +5,7 @@ Page({
   data: {
     baseUrl: 'https://mowen.lemoai.cn',
     apiKey: '',
+    settingsOpen: false,
     loading: false,
     error: '',
   },
@@ -15,6 +16,10 @@ Page({
 
   onApiKeyInput(event) {
     this.setData({ apiKey: event.detail.value, error: '' })
+  },
+
+  toggleSettings() {
+    this.setData({ settingsOpen: !this.data.settingsOpen })
   },
 
   async connect() {
@@ -33,6 +38,8 @@ Page({
         apiKey,
         keyType: res.data && res.data.key_type,
         scope: res.data && res.data.scope,
+        user: res.data && res.data.user,
+        team: res.data && res.data.team,
         workspace: res.data && res.data.workspace,
         savedAt: Date.now(),
       })

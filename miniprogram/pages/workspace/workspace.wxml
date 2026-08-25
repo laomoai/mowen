@@ -1,8 +1,11 @@
 <view class="page workspace-page">
   <view class="workspace-nav" style="height: {{navHeight}}px; padding-top: {{menuTop}}px;">
     <view class="workspace-nav-inner" style="height: {{menuHeight}}px;">
-      <view class="workspace-avatar nav-avatar" style="width: {{avatarSize}}px; height: {{avatarSize}}px;" bindtap="openSettings"></view>
-      <view class="workspace-nav-title">全部</view>
+      <view wx:if="{{stack.length === 0}}" class="workspace-avatar nav-avatar" style="width: {{avatarSize}}px; height: {{avatarSize}}px;" bindtap="openSettings">
+        <image wx:if="{{avatarUrl}}" class="workspace-avatar-image" mode="aspectFill" src="{{avatarUrl}}" />
+      </view>
+      <view wx:else class="folder-back nav-avatar" bindtap="goFolderBack"></view>
+      <view class="workspace-nav-title">{{currentTitle}}</view>
     </view>
   </view>
 
@@ -21,15 +24,15 @@
         <view class="folder-line"></view>
       </view>
       <view class="folder-copy">
-        <view class="folder-name">{{item.title}}</view>
-        <view class="folder-count">{{item.count}} 个项目</view>
+        <view class="folder-name"><text wx:if="{{item.displayIcon}}" class="folder-emoji">{{item.displayIcon}}</text>{{item.title}}</view>
+        <view class="folder-count">{{item.countText}}</view>
       </view>
       <view class="chevron"></view>
     </view>
   </view>
 
   <view class="section-row files-title">
-    <view class="section-heading">全部文件</view>
+    <view class="section-heading">{{currentParentId ? '文件' : '全部文件'}}</view>
     <view class="sort-action">按时间 排序 <text>↕</text></view>
   </view>
   <view class="file-list">

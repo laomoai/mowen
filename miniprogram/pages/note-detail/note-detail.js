@@ -9,13 +9,16 @@ Page({
     note: {},
     nodes: [],
     title: 'Markdown',
+    icon: '',
     updatedText: '',
   },
 
   onLoad(options) {
     this.noteId = options.id
     const title = options.title ? decodeURIComponent(options.title) : 'Markdown'
-    this.setData({ title })
+    const icon = options.icon ? decodeURIComponent(options.icon) : ''
+    this.setData({ title, icon })
+    wx.setNavigationBarTitle({ title })
     this.loadNote()
   },
 
@@ -27,11 +30,14 @@ Page({
       const content = await signMarkdownImages(note.content || '')
       const nodes = parseMarkdown(content)
       const title = note.title || this.data.title || 'Markdown'
+      const icon = note.icon || this.data.icon || '▤'
       rememberNode({ id: note.id, kind: 'note', ref: note.id, title, icon: note.icon || '' })
+      wx.setNavigationBarTitle({ title })
       this.setData({
         loading: false,
         note,
         title,
+        icon,
         nodes,
         updatedText: formatUpdated(note.updated_at),
       })
@@ -54,6 +60,10 @@ async function signMarkdownImages(markdown) {
   const replacements = {}
   await Promise.all(sources.map(async (src) => {
     if (/^(https?:|data:|wxfile:)/.test(src)) return
+    if (src.startsWith('/')) {
+      replacements[src] = absoluteUrl(src)
+      return
+    }
     try {
       const res = await signFile(src)
       const signed = res.data && res.data.url
@@ -79,5 +89,9 @@ function formatUpdated(value) {
   if (!value) return ''
   const date = new Date(Number(value) * 1000)
   if (Number.isNaN(date.getTime())) return ''
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日更新`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function pad(value) {
+  return String(value).padStart(2, '0')
 }

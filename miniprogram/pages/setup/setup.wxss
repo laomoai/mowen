@@ -1,89 +1,115 @@
 .setup-page {
-  padding-top: 64rpx;
-  background: #fbf9f8;
+  min-height: 100vh;
+  padding: 62rpx 66rpx 80rpx;
+  box-sizing: border-box;
+  background: #f7f8fd;
+  color: #111312;
 }
 
-.brand-row {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  margin-bottom: 58rpx;
-}
-
-.brand-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 14rpx;
+.setup-logo {
+  width: 136rpx;
+  height: 136rpx;
+  margin: 0 auto 42rpx;
+  border-radius: 28rpx;
   background: #ffffff;
-  border: 1rpx solid #e7ebe7;
-  box-shadow: 0 8rpx 26rpx rgba(0, 0, 0, 0.04);
-}
-
-.brand-glyph {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42rpx;
-  height: 42rpx;
-  border-radius: 10rpx;
-  background: #111312;
-  color: #ffffff;
-  font-size: 22rpx;
-  font-weight: 700;
+  box-shadow: 0 14rpx 42rpx rgba(24, 31, 27, .08);
 }
 
-.brand-name {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #151716;
+.mowen-logo-image {
+  width: 88rpx;
+  height: 88rpx;
 }
 
-.hero {
-  margin-bottom: 34rpx;
+.setup-title {
+  text-align: center;
+  font-size: 38rpx;
+  line-height: 52rpx;
+  font-weight: 900;
 }
 
 .setup-copy {
-  margin: -6rpx 0 0;
-  color: #626963;
-  font-size: 28rpx;
-  line-height: 44rpx;
+  width: 430rpx;
+  margin: 18rpx auto 58rpx;
+  text-align: center;
+  color: #58615a;
+  font-size: 27rpx;
+  line-height: 40rpx;
 }
 
-.form {
-  padding: 4rpx 28rpx;
-  border-radius: 14rpx;
-  box-shadow: 0 8rpx 30rpx rgba(30, 35, 32, 0.035);
+.setup-card {
+  padding: 34rpx 40rpx 40rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-sizing: border-box;
 }
 
 .field {
-  padding: 30rpx 0;
-  border-bottom: 1rpx solid #ecebea;
+  margin-top: 34rpx;
 }
 
-.field:last-child {
-  border-bottom: 0;
+.api-field,
+.service-field {
+  margin-top: 0;
 }
 
 .label {
   display: block;
-  margin-bottom: 14rpx;
-  color: #58615a;
-  font-size: 24rpx;
-  font-weight: 600;
+  margin-bottom: 16rpx;
+  color: #111312;
+  font-size: 26rpx;
+  font-weight: 800;
 }
 
 .input {
-  height: 60rpx;
+  height: 96rpx;
+  padding: 0 32rpx;
+  border-radius: 10rpx;
+  background: #f1f2f7;
+  color: #111312;
   font-size: 30rpx;
-  color: #151716;
+  box-sizing: border-box;
+}
+
+.settings-toggle {
+  width: 120rpx;
+  margin-top: 38rpx;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #087a32;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.toggle-arrow {
+  font-size: 22rpx;
+  line-height: 1;
+  transform: rotate(180deg);
+}
+
+.toggle-arrow.open {
+  transform: rotate(0);
 }
 
 .connect-button {
-  width: 330rpx;
-  margin: 42rpx auto 0;
+  width: 100%;
+  height: 96rpx;
+  margin-top: 56rpx;
+  border-radius: 16rpx;
+  background: #117a2d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+  line-height: 96rpx;
+}
+
+.button-arrow {
+  font-size: 34rpx;
+  line-height: 1;
 }
 
 .error {
@@ -91,4 +117,5 @@
   color: #ba1a1a;
   font-size: 26rpx;
   line-height: 40rpx;
+  text-align: center;
 }

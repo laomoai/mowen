@@ -1,7 +1,8 @@
 <view class="md-detail-page">
   <view class="md-hero">
     <view class="md-doc-icon">
-      <view class="md-line-icon"></view>
+      <view wx:if="{{icon}}" class="detail-emoji">{{icon}}</view>
+      <view wx:else class="md-line-icon"></view>
       <view class="md-badge">✓</view>
     </view>
     <view class="md-title">{{title}}</view>

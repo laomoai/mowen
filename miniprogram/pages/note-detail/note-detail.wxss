@@ -31,6 +31,11 @@
   box-sizing: border-box;
 }
 
+.detail-emoji {
+  font-size: 58rpx;
+  line-height: 1;
+}
+
 .md-line-icon::before {
   content: "";
   position: absolute;

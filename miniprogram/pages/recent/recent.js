@@ -25,9 +25,9 @@ Page({
     const item = this.data.items.find((entry) => entry.key === key)
     if (!item) return
     if (item.kind === 'note') {
-      wx.navigateTo({ url: `/pages/note-detail/note-detail?id=${encodeURIComponent(item.ref)}&title=${encodeURIComponent(item.title || '')}` })
+      wx.navigateTo({ url: `/pages/note-detail/note-detail?id=${encodeURIComponent(item.ref)}&title=${encodeURIComponent(item.title || '')}&icon=${encodeURIComponent(item.icon || '')}` })
     } else if (item.kind === 'table') {
-      wx.navigateTo({ url: `/pages/table-detail/table-detail?table=${encodeURIComponent(item.ref)}&title=${encodeURIComponent(item.title || '')}` })
+      wx.navigateTo({ url: `/pages/table-detail/table-detail?table=${encodeURIComponent(item.ref)}&title=${encodeURIComponent(item.title || '')}&icon=${encodeURIComponent(item.icon || '')}` })
     } else if (item.kind === 'record') {
       wx.navigateTo({ url: `/pages/record-detail/record-detail?table=${encodeURIComponent(item.tableName)}&id=${encodeURIComponent(item.ref)}&title=${encodeURIComponent(item.title || '')}` })
     }

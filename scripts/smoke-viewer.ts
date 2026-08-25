@@ -26,8 +26,8 @@ async function main() {
       created_at INTEGER DEFAULT (unixepoch())
     )`,
   ).run()
-  await db.prepare(`INSERT INTO _meta (table_name, title, row_count) VALUES (?, ?, ?)`)
-    .bind('tbl_viewer', 'Viewer Smoke', 1).run()
+  await db.prepare(`INSERT INTO _meta (table_name, title, icon, row_count) VALUES (?, ?, ?, ?)`)
+    .bind('tbl_viewer', 'Viewer Smoke', '📊', 1).run()
   await db.prepare(`INSERT INTO _groups (name, sort_order) VALUES (?, ?)`)
     .bind('Viewer Folder', 0).run()
   await db.prepare(`INSERT INTO _group_tables (group_id, table_name) VALUES (?, ?)`)
@@ -73,6 +73,7 @@ async function main() {
   const workspace = await assertOk('/api/viewer/workspace', env, executionCtx, headers)
   assertHasWorkspaceNode(workspace, 'table', 'tbl_viewer')
   assertHasWorkspaceNode(workspace, 'note', 'note_viewer')
+  assertWorkspaceMeta(workspace, 'tbl_viewer', '📊', 1)
   const note = await assertOk('/api/viewer/notes/note_viewer', env, executionCtx, headers)
   if (!JSON.stringify(note).includes('Visible Note')) throw new Error('viewer note did not return markdown content')
   const list = await assertOk('/api/viewer/tables/tbl_viewer/records?page_size=20', env, executionCtx, headers)
@@ -123,6 +124,14 @@ function assertHasWorkspaceNode(body: unknown, kind: string, ref: string) {
   const data = (body as { data?: Array<{ kind?: string; ref?: string }> }).data ?? []
   if (!data.some((node) => node.kind === kind && node.ref === ref)) {
     throw new Error(`viewer workspace is missing ${kind}:${ref}`)
+  }
+}
+
+function assertWorkspaceMeta(body: unknown, ref: string, icon: string, rowCount: number) {
+  const data = (body as { data?: Array<{ ref?: string; icon?: string; row_count?: number }> }).data ?? []
+  const node = data.find((item) => item.ref === ref)
+  if (!node || node.icon !== icon || node.row_count !== rowCount) {
+    throw new Error(`viewer workspace meta mismatch for ${ref}`)
   }
 }
 

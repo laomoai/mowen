@@ -2,7 +2,7 @@
   <view wx:if="{{!isFullscreen}}" class="detail-nav" style="height: {{navHeight}}px; padding-top: {{menuTop}}px;">
     <view class="detail-nav-inner" style="height: {{menuHeight}}px;">
       <view class="detail-back" bindtap="goBack"></view>
-      <view class="detail-nav-title">Document Details</view>
+      <view class="detail-nav-title">{{title}}</view>
     </view>
   </view>
 
@@ -14,7 +14,8 @@
 
   <view wx:if="{{!isFullscreen}}" class="hero-block">
     <view class="doc-hero-icon">
-      <view class="doc-line-icon"></view>
+      <view wx:if="{{icon}}" class="detail-emoji">{{icon}}</view>
+      <view wx:else class="doc-line-icon"></view>
       <view class="verify-badge">⌘</view>
     </view>
     <view class="doc-title">{{title}}</view>
@@ -29,8 +30,14 @@
       </view>
       <view class="toolbar-actions">
         <button wx:if="{{!isFullscreen}}" class="fullscreen-button" bindtap="enterFullscreen">⛶</button>
-        <view class="filter-icon"></view>
+        <view class="filter-icon" bindtap="toggleFilter"></view>
       </view>
+    </view>
+
+    <view wx:if="{{filterOpen}}" class="filter-panel">
+      <input class="filter-input" value="{{searchText}}" placeholder="搜索当前表格" bindinput="onSearchInput" confirm-type="search" bindconfirm="applyFilter" />
+      <button class="filter-apply" bindtap="applyFilter">筛选</button>
+      <button wx:if="{{searchText}}" class="filter-clear" bindtap="clearFilter">清除</button>
     </view>
 
     <scroll-view scroll-x scroll-y class="table-scroll">

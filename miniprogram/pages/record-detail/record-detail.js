@@ -51,6 +51,37 @@ function toFieldItem(field, value) {
 function stringifyValue(value, fieldType) {
   if (value == null || value === '') return '空'
   if (fieldType === 'checkbox') return value ? '是' : '否'
+  if (fieldType === 'datetime') return formatDateTime(value)
+  if (fieldType === 'date') return formatDate(value)
   if (typeof value === 'object') return value.title || value.name || JSON.stringify(value)
   return String(value)
+}
+
+function formatDateTime(value) {
+  const date = parseDate(value)
+  if (!date) return String(value)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function formatDate(value) {
+  const date = parseDate(value)
+  if (!date) return String(value)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function parseDate(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+  const n = Number(value)
+  if (!Number.isNaN(n) && n > 0) {
+    const date = new Date(n < 1e10 ? n * 1000 : n)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+  return null
+}
+
+function pad(value) {
+  return String(value).padStart(2, '0')
 }

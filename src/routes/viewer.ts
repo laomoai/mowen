@@ -29,13 +29,20 @@ const BLOCKED_FIELD_TYPES = new Set(['password', 'totp'])
 
 viewer.get('/me', async (c) => {
   const visible = await getVisibleWorkspaceNodes(c)
+  const [user, team] = await Promise.all([
+    getViewerUser(c),
+    getViewerTeam(c),
+  ])
 
   return c.json({
     data: {
       ok: true,
       key_type: c.get('keyType'),
       scope: c.get('keyScope'),
+      user,
+      team,
       workspace: {
+        title: team?.name || '个人写作空间',
         folder_count: visible.filter((n) => n.kind === 'folder').length,
         note_count: visible.filter((n) => n.kind === 'note').length,
         table_count: visible.filter((n) => n.kind === 'table').length,
@@ -46,7 +53,8 @@ viewer.get('/me', async (c) => {
 
 viewer.get('/workspace', async (c) => {
   const visible = await getVisibleWorkspaceNodes(c)
-  return c.json({ data: visible.map(toViewerWorkspaceNode) })
+  const metaByTable = await getTableMetaMap(c, visible)
+  return c.json({ data: visible.map((node) => toViewerWorkspaceNode(node, metaByTable)) })
 })
 
 viewer.get('/notes/:id', async (c) => {
@@ -117,15 +125,17 @@ viewer.get('/tables/:tableName/records', async (c) => {
   const result = await c.env.DB.prepare(sql).bind(...params).all()
   const rows = await signImageFields(
     c.env.SESSION_SECRET,
-    new URL(c.req.url).origin,
+    requestOrigin(c),
     formatDatetimeFields(result.results as Record<string, unknown>[], selectedFields),
     selectedFields,
   )
   const lastRow = rows[rows.length - 1]
+  const table = await getTableMeta(c, tableName)
 
   return c.json({
     data: rows,
     fields: selectedFields.map(toViewerFieldMeta),
+    table,
     meta: {
       page_size: pageSize,
       count: rows.length,
@@ -162,7 +172,7 @@ viewer.get('/tables/:tableName/records/:id', async (c) => {
   const result = await c.env.DB.prepare(sql).bind(...params).all()
   const rows = await signImageFields(
     c.env.SESSION_SECRET,
-    new URL(c.req.url).origin,
+    requestOrigin(c),
     formatDatetimeFields(result.results as Record<string, unknown>[], selectedFields),
     selectedFields,
   )
@@ -170,7 +180,7 @@ viewer.get('/tables/:tableName/records/:id', async (c) => {
     return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
   }
 
-  return c.json({ data: rows[0], fields: selectedFields.map(toViewerFieldMeta) })
+  return c.json({ data: rows[0], fields: selectedFields.map(toViewerFieldMeta), table: await getTableMeta(c, tableName) })
 })
 
 async function assertTableAccess(
@@ -216,17 +226,80 @@ async function getVisibleWorkspaceNodes(
   )
 }
 
-function toViewerWorkspaceNode(node: WorkspaceNode) {
+async function getViewerUser(c: Context<{ Bindings: Env; Variables: AuthVariables }>) {
+  const userId = c.get('userId')
+  if (!userId) return null
+  const row = await c.env.DB.prepare(
+    `SELECT id, email, name, picture FROM _users WHERE id = ? LIMIT 1`,
+  ).bind(userId).first<{ id: number; email: string; name: string; picture: string }>()
+  if (!row) return null
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name || row.email,
+    picture: row.picture || null,
+  }
+}
+
+async function getViewerTeam(c: Context<{ Bindings: Env; Variables: AuthVariables }>) {
+  const teamId = c.get('teamId')
+  if (!teamId) return null
+  const row = await c.env.DB.prepare(
+    `SELECT id, name FROM _teams WHERE id = ? LIMIT 1`,
+  ).bind(teamId).first<{ id: number; name: string }>()
+  return row ? { id: row.id, name: row.name } : null
+}
+
+async function getTableMetaMap(
+  c: Context<{ Bindings: Env; Variables: AuthVariables }>,
+  nodes: WorkspaceNode[],
+): Promise<Map<string, { title: string | null; icon: string | null; row_count: number | null }>> {
+  const names = [...new Set(nodes.filter((node) => node.kind === 'table' && node.ref).map((node) => node.ref!))]
+  if (names.length === 0) return new Map()
+  const placeholders = names.map(() => '?').join(',')
+  const rows = await c.env.DB.prepare(
+    `SELECT table_name, title, icon, row_count FROM _meta WHERE table_name IN (${placeholders})`,
+  ).bind(...names).all<{ table_name: string; title: string | null; icon: string | null; row_count: number | null }>()
+  return new Map(rows.results.map((row) => [row.table_name, row]))
+}
+
+async function getTableMeta(
+  c: Context<{ Bindings: Env; Variables: AuthVariables }>,
+  tableName: string,
+) {
+  const row = await c.env.DB.prepare(
+    `SELECT table_name, title, icon, row_count FROM _meta WHERE table_name = ? LIMIT 1`,
+  ).bind(tableName).first<{ table_name: string; title: string | null; icon: string | null; row_count: number | null }>()
+  return row
+    ? { name: row.table_name, title: row.title || row.table_name, icon: row.icon || null, row_count: row.row_count ?? null }
+    : { name: tableName, title: tableName, icon: null, row_count: null }
+}
+
+function toViewerWorkspaceNode(
+  node: WorkspaceNode,
+  metaByTable: Map<string, { title: string | null; icon: string | null; row_count: number | null }>,
+) {
+  const tableMeta = node.kind === 'table' && node.ref ? metaByTable.get(node.ref) : null
   return {
     id: node.id,
     kind: node.kind,
     parent_id: node.parent_id,
     sort_order: node.sort_order,
-    title: node.title,
+    title: tableMeta?.title || node.title,
     ref: node.ref,
     group_id: node.group_id,
-    icon: node.icon,
+    icon: tableMeta?.icon || node.icon,
+    row_count: tableMeta?.row_count ?? null,
   }
+}
+
+function requestOrigin(c: Context<{ Bindings: Env; Variables: AuthVariables }>): string {
+  const url = new URL(c.req.url)
+  const proto = c.req.header('X-Forwarded-Proto')?.split(',')[0]?.trim() || url.protocol.replace(/:$/, '')
+  const host = c.req.header('X-Forwarded-Host')?.split(',')[0]?.trim()
+    || c.req.header('Host')?.split(',')[0]?.trim()
+    || url.host
+  return `${proto}://${host}`
 }
 
 function buildSafeFields(fields: ViewerField[], allColumns: string[]): ViewerField[] {

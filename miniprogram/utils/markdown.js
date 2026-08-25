@@ -37,6 +37,7 @@ function parseMarkdown(content, resolveImageUrl) {
           class: 'mw-image',
           alt: imageMatch[1],
           src: resolveImageUrl ? resolveImageUrl(imageMatch[2]) : imageMatch[2],
+          style: 'max-width:100%;height:auto;border-radius:8px;margin-top:12px;',
         },
       })
       continue
