@@ -1,6 +1,7 @@
 const { rememberNode } = require('../../utils/recent')
 const { getWorkspaceTree } = require('../../utils/api')
 const { getConfig } = require('../../utils/storage')
+const { formatIcon } = require('../../utils/icons')
 
 Page({
   data: {
@@ -71,7 +72,7 @@ Page({
           count: countFolderItems(nodes, node.id),
           countText: `${countFolderItems(nodes, node.id)} 个文件`,
           theme: folderTheme(index),
-          displayIcon: node.icon || '',
+          displayIcon: formatIcon(node.icon, 'folder'),
         })),
       files: nodes
         .filter((node) => node.kind !== 'folder' && (parentId ? node.parent_id === parentId : true))
@@ -80,7 +81,7 @@ Page({
           meta: node.kind === 'table'
             ? `${Number(node.row_count || 0)} 条记录`
             : 'MD 文档',
-          ext: node.icon || defaultIcon(node.kind),
+          ext: formatIcon(node.icon, node.kind),
           theme: node.kind === 'table' ? 'sheet' : 'doc',
         })),
     })
@@ -168,10 +169,6 @@ function countFolderItems(nodes, folderId) {
 
 function folderTheme(index) {
   return ['blue', 'green', 'red'][index % 3]
-}
-
-function defaultIcon(kind) {
-  return kind === 'table' ? '▦' : '▤'
 }
 
 function absoluteUrl(config, value) {

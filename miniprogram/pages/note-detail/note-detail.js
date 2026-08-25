@@ -2,6 +2,7 @@ const { getNote, signFile } = require('../../utils/api')
 const { parseMarkdown } = require('../../utils/markdown')
 const { getConfig } = require('../../utils/storage')
 const { rememberNode } = require('../../utils/recent')
+const { formatIcon } = require('../../utils/icons')
 
 Page({
   data: {
@@ -17,7 +18,7 @@ Page({
     this.noteId = options.id
     const title = options.title ? decodeURIComponent(options.title) : 'Markdown'
     const icon = options.icon ? decodeURIComponent(options.icon) : ''
-    this.setData({ title, icon })
+    this.setData({ title, icon: formatIcon(icon, 'note') })
     wx.setNavigationBarTitle({ title })
     this.loadNote()
   },
@@ -30,7 +31,7 @@ Page({
       const content = await signMarkdownImages(note.content || '')
       const nodes = parseMarkdown(content)
       const title = note.title || this.data.title || 'Markdown'
-      const icon = note.icon || this.data.icon || '▤'
+      const icon = formatIcon(note.icon || this.data.icon, 'note')
       rememberNode({ id: note.id, kind: 'note', ref: note.id, title, icon: note.icon || '' })
       wx.setNavigationBarTitle({ title })
       this.setData({

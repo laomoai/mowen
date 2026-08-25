@@ -1,5 +1,6 @@
 const { getViewerRecords } = require('../../utils/api')
 const { rememberNode, rememberRecord } = require('../../utils/recent')
+const { formatIcon } = require('../../utils/icons')
 
 Page({
   data: {
@@ -21,7 +22,7 @@ Page({
   onLoad(options) {
     const title = options.title ? decodeURIComponent(options.title) : '表格'
     const icon = options.icon ? decodeURIComponent(options.icon) : ''
-    this.setData({ tableName: options.table || '', title, icon })
+    this.setData({ tableName: options.table || '', title, icon: formatIcon(icon, 'table') })
     this.syncNavMetrics()
     this.loadRows()
   },
@@ -89,10 +90,11 @@ Page({
       const res = await getViewerRecords(this.data.tableName, params)
       const table = res.table || {}
       const title = table.title || this.data.title
-      const icon = table.icon || this.data.icon || '▦'
+      const rawIcon = table.icon || ''
+      const icon = formatIcon(rawIcon || this.data.icon, 'table')
       const fields = normalizeFields(res.fields || [])
       const rows = normalizeRows(res.data || [], fields)
-      rememberNode({ kind: 'table', ref: this.data.tableName, title, icon })
+      rememberNode({ kind: 'table', ref: this.data.tableName, title, icon: rawIcon || icon })
       wx.setNavigationBarTitle({ title })
       this.setData({
         loading: false,

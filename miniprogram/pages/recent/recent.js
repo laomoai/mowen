@@ -1,4 +1,5 @@
 const { getRecent } = require('../../utils/storage')
+const { formatIcon } = require('../../utils/icons')
 
 Page({
   data: {
@@ -44,10 +45,7 @@ Page({
 })
 
 function iconForKind(kind, icon) {
-  if (icon) return icon
-  if (kind === 'table') return '▦'
-  if (kind === 'record') return '#'
-  return '▤'
+  return formatIcon(icon, kind)
 }
 
 function metaForEntry(entry) {
