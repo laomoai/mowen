@@ -1,0 +1,29 @@
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.field-card {
+  padding: 24rpx 28rpx;
+}
+
+.field-label {
+  margin-bottom: 14rpx;
+  color: #69716b;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.field-value {
+  color: #151716;
+  font-size: 31rpx;
+  line-height: 48rpx;
+  word-break: break-word;
+}
+
+.field-image {
+  width: 100%;
+  border-radius: 10rpx;
+  background: #f0efee;
+}

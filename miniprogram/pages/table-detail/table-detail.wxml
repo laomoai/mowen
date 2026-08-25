@@ -1,0 +1,60 @@
+<view class="detail-page {{isFullscreen ? 'fullscreen' : ''}}">
+  <view wx:if="{{!isFullscreen}}" class="detail-nav" style="height: {{navHeight}}px; padding-top: {{menuTop}}px;">
+    <view class="detail-nav-inner" style="height: {{menuHeight}}px;">
+      <view class="detail-back" bindtap="goBack"></view>
+      <view class="detail-nav-title">Document Details</view>
+    </view>
+  </view>
+
+  <view wx:if="{{isFullscreen}}" class="fullscreen-topbar">
+    <button class="exit-fullscreen" bindtap="exitFullscreen">退出</button>
+    <view class="fullscreen-title">{{title}}</view>
+    <view class="fullscreen-spacer"></view>
+  </view>
+
+  <view wx:if="{{!isFullscreen}}" class="hero-block">
+    <view class="doc-hero-icon">
+      <view class="doc-line-icon"></view>
+      <view class="verify-badge">⌘</view>
+    </view>
+    <view class="doc-title">季度财务报表</view>
+    <view class="doc-subtitle">2023年第三季度综合数据</view>
+  </view>
+
+  <view class="table-card">
+    <view class="table-toolbar">
+      <view class="toolbar-left">
+        <view class="mini-table-icon"></view>
+        <text>数据明细</text>
+      </view>
+      <view class="toolbar-actions">
+        <button wx:if="{{!isFullscreen}}" class="fullscreen-button" bindtap="enterFullscreen">⛶</button>
+        <view class="filter-icon"></view>
+      </view>
+    </view>
+
+    <scroll-view scroll-x scroll-y class="table-scroll">
+      <view class="data-table">
+        <view class="table-row head">
+          <view class="table-cell month">月份</view>
+          <view class="table-cell">收入 (¥)</view>
+          <view class="table-cell">支出 (¥)</view>
+          <view class="table-cell profit">利润</view>
+        </view>
+        <view wx:for="{{rows}}" wx:key="month" class="table-row">
+          <view class="table-cell month strong">{{item.month}}</view>
+          <view class="table-cell">{{item.income}}</view>
+          <view class="table-cell">{{item.expense}}</view>
+          <view class="table-cell profit">{{item.profit}}</view>
+        </view>
+        <view class="table-row total">
+          <view class="table-cell month">总计</view>
+          <view class="table-cell">560,500</view>
+          <view class="table-cell">368,900</view>
+          <view class="table-cell profit">191,600</view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="fake-scrollbar"></view>
+  </view>
+</view>

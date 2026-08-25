@@ -1,0 +1,27 @@
+<view class="page setup-page">
+  <view class="brand-row">
+    <view class="brand-mark">
+      <view class="brand-glyph">墨</view>
+    </view>
+    <view class="brand-name">墨问</view>
+  </view>
+
+  <view class="hero">
+    <view class="page-title">连接你的知识空间</view>
+    <view class="setup-copy">在 Web 版创建只读 API Key，推荐只授权需要在小程序阅读的文件夹。</view>
+  </view>
+
+  <view class="form card">
+    <view class="field">
+      <text class="label">服务地址</text>
+      <input class="input" value="{{baseUrl}}" placeholder="https://mowen.lemoai.cn" bindinput="onBaseUrlInput" />
+    </view>
+    <view class="field">
+      <text class="label">API Key</text>
+      <input class="input" value="{{apiKey}}" password placeholder="mw_..." bindinput="onApiKeyInput" />
+    </view>
+  </view>
+
+  <button class="primary-button connect-button" loading="{{loading}}" bindtap="connect">验证并进入</button>
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+</view>

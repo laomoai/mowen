@@ -1,0 +1,12 @@
+<view class="tab-shell">
+  <view class="tab-item {{selected === 0 ? 'active' : ''}}" data-index="0" bindtap="switchTab">
+    <view class="clock-icon"></view>
+    <view class="tab-label">最近</view>
+  </view>
+  <view class="tab-item {{selected === 1 ? 'active' : ''}}" data-index="1" bindtap="switchTab">
+    <view class="grid-icon">
+      <view wx:for="{{dots}}" wx:key="*this"></view>
+    </view>
+    <view class="tab-label">全部</view>
+  </view>
+</view>

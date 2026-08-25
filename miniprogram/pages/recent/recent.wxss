@@ -1,0 +1,56 @@
+.recent-page {
+  background: #f8f6f1;
+  padding-top: 18rpx;
+}
+
+.recent-list {
+  margin-top: 26rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.recent-card {
+  height: 164rpx;
+  padding: 0 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #eceae7;
+  border-radius: 8rpx;
+  box-shadow: 0 3rpx 7rpx rgba(22, 24, 23, .025);
+  box-sizing: border-box;
+}
+
+.recent-emoji {
+  width: 36rpx;
+  flex: none;
+  font-size: 30rpx;
+  line-height: 1;
+}
+
+.recent-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.recent-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 31rpx;
+  line-height: 44rpx;
+  font-weight: 700;
+  color: #292d2a;
+}
+
+.recent-meta {
+  margin-top: 8rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #85867e;
+}

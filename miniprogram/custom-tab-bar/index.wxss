@@ -1,0 +1,85 @@
+.tab-shell {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+  height: 112rpx;
+  padding-bottom: env(safe-area-inset-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: rgba(255, 255, 255, .98);
+  border-top: 1rpx solid #f0efed;
+  box-shadow: 0 -12rpx 30rpx rgba(20, 22, 20, .03);
+}
+
+.tab-item {
+  width: 160rpx;
+  height: 96rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5rpx;
+  color: #465247;
+  font-size: 22rpx;
+}
+
+.tab-item.active {
+  color: #007a3d;
+}
+
+.clock-icon {
+  width: 34rpx;
+  height: 34rpx;
+  border: 5rpx solid currentColor;
+  border-radius: 50%;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.clock-icon::before {
+  content: "";
+  position: absolute;
+  width: 5rpx;
+  height: 13rpx;
+  left: 13rpx;
+  top: 5rpx;
+  border-radius: 5rpx;
+  background: currentColor;
+}
+
+.clock-icon::after {
+  content: "";
+  position: absolute;
+  width: 12rpx;
+  height: 5rpx;
+  left: 14rpx;
+  top: 15rpx;
+  border-radius: 5rpx;
+  background: currentColor;
+  transform: rotate(40deg);
+  transform-origin: 0 50%;
+}
+
+.grid-icon {
+  width: 37rpx;
+  height: 37rpx;
+  display: grid;
+  grid-template-columns: repeat(3, 7rpx);
+  grid-auto-rows: 7rpx;
+  gap: 5rpx;
+}
+
+.grid-icon view {
+  width: 7rpx;
+  height: 7rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.tab-label {
+  font-size: 22rpx;
+  line-height: 28rpx;
+}

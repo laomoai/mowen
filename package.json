@@ -8,7 +8,8 @@
     "dev:web": "cd web && npm run dev",
     "start": "tsx src/server.ts",
     "build:web": "cd web && npm run build && mkdir -p ../public/agent && rm -rf ../public/agent/mowen ../public/agent/d1table ../public/agent/mowen.zip && cp -R ../agent/mowen ../public/agent/mowen && (cd ../agent && zip -qr ../public/agent/mowen.zip mowen)",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "smoke:viewer": "tsx scripts/smoke-viewer.ts"
   },
   "dependencies": {
     "@dicebear/adventurer": "^9.4.2",

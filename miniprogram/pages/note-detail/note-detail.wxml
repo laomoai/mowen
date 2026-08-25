@@ -1,0 +1,35 @@
+<view class="md-detail-page">
+  <view class="md-hero">
+    <view class="md-doc-icon">
+      <view class="md-line-icon"></view>
+      <view class="md-badge">✓</view>
+    </view>
+    <view class="md-title">AI 产品设计复盘</view>
+    <view class="md-subtitle">从用户研究到交互方案的完整记录</view>
+  </view>
+
+  <view class="md-card">
+    <view class="md-card-head">
+      <view class="md-head-left">
+        <view class="md-small-icon"></view>
+        <text>Markdown 内容</text>
+      </view>
+      <view class="md-more">•••</view>
+    </view>
+
+    <view class="md-content">
+      <view class="md-h1">项目背景</view>
+      <view class="md-p">这份文档记录了新一轮知识空间阅读体验的设计方向，重点关注移动端快速浏览、结构化阅读和轻量协作。</view>
+
+      <view class="md-h2">核心目标</view>
+      <view class="md-list-item">提升最近访问内容的回到效率</view>
+      <view class="md-list-item">让表格与 Markdown 在小程序内保持一致的阅读节奏</view>
+      <view class="md-list-item">通过 API Key 只读授权保护用户知识空间</view>
+
+      <view class="md-quote">“小程序端只负责阅读和呈现，敏感配置仍由 Web 端完成。”</view>
+
+      <view class="md-h2">下一步</view>
+      <view class="md-p">确认静态视觉后，将把真实 Markdown AST 渲染接入当前样式，并补齐图片、代码块、表格和链接状态。</view>
+    </view>
+  </view>
+</view>

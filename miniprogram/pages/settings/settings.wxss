@@ -1,0 +1,203 @@
+.settings-page {
+  min-height: 100vh;
+  background: #fbfaf8;
+  box-sizing: border-box;
+  padding-bottom: 80rpx;
+}
+
+.profile-block {
+  padding-top: 72rpx;
+  height: 382rpx;
+  background: #fbfaf8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.profile-avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 18rpx;
+  background: linear-gradient(140deg, #c8b29a 0%, #f1d9bf 42%, #273443 43%, #172330 100%);
+  box-shadow: inset 0 0 0 2rpx rgba(255,255,255,.55);
+}
+
+.profile-name {
+  margin-top: 28rpx;
+  font-size: 30rpx;
+  line-height: 40rpx;
+  color: #151716;
+}
+
+.profile-email {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  color: #37453b;
+  font-size: 24rpx;
+  line-height: 34rpx;
+}
+
+.mail-icon {
+  width: 24rpx;
+  height: 17rpx;
+  border: 3rpx solid #37453b;
+  border-radius: 2rpx;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.mail-icon::before,
+.mail-icon::after {
+  content: "";
+  position: absolute;
+  top: 3rpx;
+  width: 13rpx;
+  height: 3rpx;
+  background: #37453b;
+}
+
+.mail-icon::before {
+  left: 1rpx;
+  transform: rotate(32deg);
+}
+
+.mail-icon::after {
+  right: 1rpx;
+  transform: rotate(-32deg);
+}
+
+.settings-divider {
+  height: 1rpx;
+  background: #e2e3e1;
+}
+
+.workspace-section {
+  padding: 64rpx 30rpx 0;
+}
+
+.workspace-label {
+  font-size: 28rpx;
+  line-height: 40rpx;
+  font-weight: 700;
+  color: #334338;
+}
+
+.workspace-card {
+  margin-top: 28rpx;
+  height: 96rpx;
+  padding: 24rpx;
+  border: 1rpx solid #dedfdb;
+  border-radius: 10rpx;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 4rpx 12rpx rgba(20, 22, 20, .025);
+}
+
+.workspace-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
+  background: #f3f2f1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 24rpx;
+  color: #202421;
+  flex: none;
+}
+
+.nodes-icon {
+  width: 40rpx;
+  height: 36rpx;
+  position: relative;
+}
+
+.nodes-icon view {
+  position: absolute;
+  width: 10rpx;
+  height: 10rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 50%;
+  background: #f3f2f1;
+}
+
+.nodes-icon view:nth-child(1) { left: 15rpx; top: 0; }
+.nodes-icon view:nth-child(2) { left: 0; bottom: 0; }
+.nodes-icon view:nth-child(3) { right: 0; bottom: 0; }
+
+.nodes-icon::before,
+.nodes-icon::after {
+  content: "";
+  position: absolute;
+  top: 19rpx;
+  width: 19rpx;
+  height: 4rpx;
+  background: currentColor;
+}
+
+.nodes-icon::before {
+  left: 8rpx;
+  transform: rotate(-34deg);
+}
+
+.nodes-icon::after {
+  right: 8rpx;
+  transform: rotate(34deg);
+}
+
+.workspace-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-title {
+  font-size: 30rpx;
+  line-height: 42rpx;
+  font-weight: 800;
+  color: #151716;
+}
+
+.workspace-subtitle {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #354238;
+}
+
+.switch-icon {
+  color: #334338;
+  font-size: 36rpx;
+  font-weight: 800;
+  transform: rotate(-12deg);
+  flex: none;
+}
+
+.logout-button {
+  position: fixed;
+  left: 50%;
+  bottom: 56rpx;
+  transform: translateX(-50%);
+  width: 320rpx;
+  height: 76rpx;
+  padding: 0;
+  border-radius: 18rpx;
+  background: #fff0ef;
+  color: #c90000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.logout-icon {
+  font-size: 26rpx;
+  line-height: 1;
+}

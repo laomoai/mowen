@@ -1,0 +1,33 @@
+<view class="settings-page">
+  <view class="profile-block">
+    <view class="profile-avatar"></view>
+    <view class="profile-name">Alex Chen</view>
+    <view class="profile-email">
+      <view class="mail-icon"></view>
+      <text>邮箱: alex.chen@example.com</text>
+    </view>
+  </view>
+
+  <view class="settings-divider"></view>
+
+  <view class="workspace-section">
+    <view class="workspace-label">当前工作空间</view>
+    <view class="workspace-card">
+      <view class="workspace-icon">
+        <view class="nodes-icon">
+          <view></view><view></view><view></view>
+        </view>
+      </view>
+      <view class="workspace-copy">
+        <view class="workspace-title">个人写作空间</view>
+        <view class="workspace-subtitle">基础版 · 已同步</view>
+      </view>
+      <view class="switch-icon">↔</view>
+    </view>
+  </view>
+
+  <button class="logout-button" bindtap="clearAll">
+    <text class="logout-icon">↪</text>
+    <text>注销 API Key</text>
+  </button>
+</view>

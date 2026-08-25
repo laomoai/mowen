@@ -1,0 +1,36 @@
+{
+  "pages": [
+    "pages/setup/setup",
+    "pages/recent/recent",
+    "pages/workspace/workspace",
+    "pages/settings/settings",
+    "pages/note-detail/note-detail",
+    "pages/table-detail/table-detail",
+    "pages/record-detail/record-detail"
+  ],
+  "window": {
+    "navigationBarTitleText": "墨问",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f7f7"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#70756f",
+    "selectedColor": "#007a3d",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/recent/recent",
+        "text": "最近"
+      },
+      {
+        "pagePath": "pages/workspace/workspace",
+        "text": "全部"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

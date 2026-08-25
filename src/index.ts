@@ -21,6 +21,7 @@ import avatarsRouter from './routes/avatars'
 import workspaceRouter from './routes/workspace'
 import assistantRouter from './routes/assistant'
 import filesRouter from './routes/files'
+import viewerRouter from './routes/viewer'
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -93,6 +94,7 @@ app.route('/api/teams', teamsRouter)
 app.route('/api/workspace', workspaceRouter)
 app.route('/api/assistant', assistantRouter)
 app.route('/api/files', filesRouter)
+app.route('/api/viewer', viewerRouter)
 
 export { app }
 
@@ -158,6 +160,125 @@ Skill：\`/agent/mowen/SKILL.md\``,
           summary: 'Health check',
           security: [],
           responses: { '200': { description: 'Service is healthy' } },
+        },
+      },
+      '/api/viewer/me': {
+        get: {
+          summary: 'Validate API key for readonly mini program viewer',
+          description: 'Returns API key type, scope, and a visible workspace summary. Intended for the WeChat Mini Program readonly reader.',
+          responses: {
+            '200': {
+              description: 'Viewer connection summary',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          ok: { type: 'boolean' },
+                          key_type: { type: 'string', enum: ['readonly', 'readwrite'] },
+                          scope: { type: 'string', enum: ['all', 'groups'] },
+                          workspace: {
+                            type: 'object',
+                            properties: {
+                              folder_count: { type: 'integer' },
+                              note_count: { type: 'integer' },
+                              table_count: { type: 'integer' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Missing or invalid API key' },
+          },
+        },
+      },
+      '/api/viewer/tables/{tableName}/records': {
+        get: {
+          summary: 'List records for readonly mini program viewer',
+          description: 'Returns only viewer-safe fields. Hidden fields, password fields, and totp fields are excluded before the response is created. Filters and sorting are also restricted to viewer-safe fields.',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'page_size', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
+            { name: 'cursor', in: 'query', schema: { type: 'string' }, description: 'The id of the last record from the previous page' },
+            { name: 'sort', in: 'query', schema: { type: 'string' }, description: 'Format: safe_field:asc or safe_field:desc' },
+            { name: 'fields', in: 'query', schema: { type: 'string' }, description: 'Comma-separated viewer-safe fields. id is always retained when available.' },
+            { name: 'filter[field]', in: 'query', schema: { type: 'string' }, description: 'Equality filter over viewer-safe fields; supports suffixes __gt/__gte/__lt/__lte/__like/__ne' },
+          ],
+          responses: {
+            '200': {
+              description: 'Safe record list + safe field metadata',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: { type: 'array', items: { type: 'object' } },
+                      fields: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            column_name: { type: 'string' },
+                            title: { type: 'string' },
+                            field_type: { type: 'string' },
+                          },
+                        },
+                      },
+                      meta: { $ref: '#/components/schemas/PaginationMeta' },
+                    },
+                  },
+                },
+              },
+            },
+            '403': { description: 'Table not allowed by API key scope' },
+            '404': { description: 'Table not found' },
+          },
+        },
+      },
+      '/api/viewer/tables/{tableName}/records/{id}': {
+        get: {
+          summary: 'Get one safe record for readonly mini program viewer',
+          description: 'Returns one record with only viewer-safe fields. Hidden fields, password fields, and totp fields are excluded before the response is created.',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'fields', in: 'query', schema: { type: 'string' }, description: 'Comma-separated viewer-safe fields. id is always retained when available.' },
+          ],
+          responses: {
+            '200': {
+              description: 'Safe record detail + safe field metadata',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: { type: 'object' },
+                      fields: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            column_name: { type: 'string' },
+                            title: { type: 'string' },
+                            field_type: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '403': { description: 'Table not allowed by API key scope' },
+            '404': { description: 'Table or record not found' },
+          },
         },
       },
       '/api/tables': {

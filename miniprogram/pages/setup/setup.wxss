@@ -1,0 +1,94 @@
+.setup-page {
+  padding-top: 64rpx;
+  background: #fbf9f8;
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 58rpx;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 14rpx;
+  background: #ffffff;
+  border: 1rpx solid #e7ebe7;
+  box-shadow: 0 8rpx 26rpx rgba(0, 0, 0, 0.04);
+}
+
+.brand-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42rpx;
+  height: 42rpx;
+  border-radius: 10rpx;
+  background: #111312;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.brand-name {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #151716;
+}
+
+.hero {
+  margin-bottom: 34rpx;
+}
+
+.setup-copy {
+  margin: -6rpx 0 0;
+  color: #626963;
+  font-size: 28rpx;
+  line-height: 44rpx;
+}
+
+.form {
+  padding: 4rpx 28rpx;
+  border-radius: 14rpx;
+  box-shadow: 0 8rpx 30rpx rgba(30, 35, 32, 0.035);
+}
+
+.field {
+  padding: 30rpx 0;
+  border-bottom: 1rpx solid #ecebea;
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.label {
+  display: block;
+  margin-bottom: 14rpx;
+  color: #58615a;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.input {
+  height: 60rpx;
+  font-size: 30rpx;
+  color: #151716;
+}
+
+.connect-button {
+  width: 330rpx;
+  margin: 42rpx auto 0;
+}
+
+.error {
+  margin-top: 24rpx;
+  color: #ba1a1a;
+  font-size: 26rpx;
+  line-height: 40rpx;
+}

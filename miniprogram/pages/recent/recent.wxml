@@ -1,0 +1,16 @@
+<view class="page recent-page">
+  <view class="search-large">
+    <view class="search-icon"></view>
+    <view>搜索...</view>
+  </view>
+
+  <view class="recent-list">
+    <view wx:for="{{items}}" wx:key="key" class="recent-card" bindtap="openRecent" data-key="{{item.key}}">
+      <view class="recent-emoji">{{item.iconText}}</view>
+      <view class="recent-main">
+        <view class="recent-title">{{item.title}}</view>
+        <view class="recent-meta">{{item.meta}}</view>
+      </view>
+    </view>
+  </view>
+</view>
