@@ -295,6 +295,7 @@ export interface ApiKeyInfo {
 export interface TeamInfo {
   id: number
   name: string
+  role?: 'owner' | 'admin' | 'member' | 'viewer'
 }
 
 export interface CurrentUser {
@@ -304,6 +305,8 @@ export interface CurrentUser {
   picture: string
   role: 'admin' | 'user'
   team: TeamInfo | null
+  current_team?: TeamInfo | null
+  spaces?: TeamInfo[]
 }
 
 export interface UserInfo {
@@ -316,7 +319,9 @@ export interface UserInfo {
   created_at: number
   last_login: number | null
   team_id: number | null
+  current_team_id?: number | null
   team_name: string | null
+  spaces?: TeamInfo[]
 }
 
 export interface TeamMember {
@@ -327,6 +332,8 @@ export interface TeamMember {
   role: 'admin' | 'user'
   status: 'active' | 'disabled'
   last_login: number | null
+  space_role?: 'owner' | 'admin' | 'member' | 'viewer'
+  joined_at?: number
 }
 
 export interface TeamDetail {
@@ -335,6 +342,24 @@ export interface TeamDetail {
   created_by: number | null
   created_at: number
   members: TeamMember[]
+}
+
+export interface TeamInvite {
+  id: number
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+  max_uses: number | null
+  used_count: number
+  expires_at: number | null
+  created_at: number
+  revoked_at: number | null
+}
+
+export interface CreatedInvite {
+  id: number
+  code: string
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+  max_uses: number | null
+  expires_at: number | null
 }
 
 // ── Notes 类型定义 ──────────────────────────────────────────────────
@@ -547,6 +572,12 @@ export function avatarUrl(picture: string | null | undefined, email: string): st
 export const getCurrentUser = (): Promise<CurrentUser> =>
   http.get<{ data: CurrentUser }>('/auth/me').then((r) => r.data.data)
 
+export const switchSpace = (team_id: number): Promise<{ current_team: TeamInfo }> =>
+  http.post<{ data: { current_team: TeamInfo } }>('/auth/switch-space', { team_id }).then((r) => r.data.data)
+
+export const joinSpace = (invite_code: string): Promise<{ current_team: TeamInfo }> =>
+  http.post<{ data: { current_team: TeamInfo } }>('/auth/join', { invite_code }).then((r) => r.data.data)
+
 export const changePassword = (current_password: string, new_password: string) =>
   http.post<{ data: { success: boolean } }>('/auth/change-password', { current_password, new_password }).then((r) => r.data.data)
 
@@ -562,16 +593,26 @@ export const userApi = {
 }
 
 export const teamApi = {
+  getSpaces: () =>
+    http.get<{ data: TeamInfo[] }>('/teams').then(r => r.data.data),
+  createSpace: (name: string) =>
+    http.post<{ data: TeamInfo }>('/teams', { name }).then(r => r.data.data),
   getTeamInfo: () =>
     http.get<{ data: TeamDetail }>('/teams/current').then(r => r.data.data),
   renameTeam: (name: string) =>
     http.patch<{ data: { success: boolean } }>('/teams/current', { name }).then(r => r.data.data),
   addMember: (email: string) =>
-    http.post<{ data: { id: number; email: string; mail_sent?: boolean }; error?: { message: string } }>('/teams/current/members', { email }).then(r => r.data),
+    http.post<{ data: { id: number; email: string; mail_sent?: boolean; existing_user?: boolean }; error?: { message: string } }>('/teams/current/members', { email }).then(r => r.data),
   resendInvite: (userId: number) =>
     http.post<{ data: { success: boolean } }>(`/teams/current/members/${userId}/invite`).then(r => r.data.data),
   removeMember: (userId: number) =>
     http.delete(`/teams/current/members/${userId}`),
+  listInvites: () =>
+    http.get<{ data: TeamInvite[] }>('/teams/current/invites').then(r => r.data.data),
+  createInvite: (data: { role?: 'admin' | 'member' | 'viewer'; max_uses?: number | null; expires_in_days?: number | null }) =>
+    http.post<{ data: CreatedInvite }>('/teams/current/invites', data).then(r => r.data.data),
+  revokeInvite: (id: number) =>
+    http.delete(`/teams/current/invites/${id}`),
 }
 
 // ── Administration (Space 管理) ──────────────────────────────
@@ -606,7 +647,7 @@ export const administrationApi = {
   renameSpace: (id: number, name: string) =>
     http.patch<{ data: { success: boolean } }>(`/admin/spaces/${id}`, { name }).then(r => r.data.data),
   addMember: (spaceId: number, email: string) =>
-    http.post<{ data: { id: number; email: string } }>(`/admin/spaces/${spaceId}/members`, { email }).then(r => r.data.data),
+    http.post<{ data: { id: number; email: string; existing_user?: boolean } }>(`/admin/spaces/${spaceId}/members`, { email }).then(r => r.data.data),
   removeMember: (spaceId: number, userId: number) =>
     http.delete(`/admin/spaces/${spaceId}/members/${userId}`),
   deleteSpace: (id: number, confirmName: string) =>

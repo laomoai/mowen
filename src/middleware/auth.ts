@@ -3,6 +3,7 @@ import type { AuthVariables, Env } from '../types'
 import { sha256 } from '../utils/crypto'
 import { verifySession } from '../utils/session'
 import { getFolderScopedAccess } from '../utils/workspace'
+import { getActiveTeamForUser } from '../utils/members'
 
 /**
  * API Key / Session 认证中间件
@@ -23,8 +24,8 @@ export const authMiddleware: MiddlewareHandler<{
     if (user) {
       // 查 _users 表确认用户存在且未禁用
       const userRow = await c.env.DB.prepare(
-        `SELECT id, role, team_id FROM _users WHERE email = ? AND status = 'active' LIMIT 1`
-      ).bind(user.email).first<{ id: number; role: 'admin' | 'user'; team_id: number | null }>()
+        `SELECT id, role, team_id, current_team_id FROM _users WHERE email = ? AND status = 'active' LIMIT 1`
+      ).bind(user.email).first<{ id: number; role: 'admin' | 'user'; team_id: number | null; current_team_id: number | null }>()
 
       if (!userRow) {
         return c.json({ error: { code: 'UNAUTHORIZED', message: 'User account not found or disabled' } }, 401)
@@ -38,7 +39,8 @@ export const authMiddleware: MiddlewareHandler<{
       c.set('user', user)
       c.set('userId', userRow.id)
       c.set('userRole', userRow.role)
-      if (userRow.team_id) c.set('teamId', userRow.team_id)
+      const activeSpace = await getActiveTeamForUser(c.env.DB, userRow.id, userRow.current_team_id ?? userRow.team_id)
+      if (activeSpace) c.set('teamId', activeSpace.id)
       return next()
     }
   }

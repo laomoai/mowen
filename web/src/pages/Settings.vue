@@ -332,6 +332,35 @@
                 <p class="hint">不会生成密码。我们发一封邮件，对方点链接自己设密码，7 天内有效。</p>
               </div>
 
+              <div v-if="isOwner" class="section invite-section">
+                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">邀请码</div>
+                <div class="invite-actions">
+                  <n-button size="small" type="primary" :loading="creatingInvite" @click="handleCreateInvite">生成邀请码</n-button>
+                  <span class="hint">默认 7 天有效，最多使用 20 次。</span>
+                </div>
+                <div v-if="newInviteCode" class="invite-code-row">
+                  <code>{{ newInviteCode }}</code>
+                  <n-button size="tiny" quaternary @click="copyText(newInviteCode, '邀请码已复制')">复制</n-button>
+                </div>
+                <div v-if="teamInvites?.length" class="invite-list">
+                  <div v-for="invite in teamInvites" :key="invite.id" class="invite-row">
+                    <div>
+                      <div class="invite-title">{{ invite.revoked_at ? '已撤销' : isInviteExpired(invite.expires_at) ? '已过期' : '有效邀请码' }}</div>
+                      <div class="invite-meta">
+                        已用 {{ invite.used_count }} / {{ invite.max_uses || '不限' }} · {{ invite.expires_at ? `过期 ${formatRelativeTime(invite.expires_at)}` : '永不过期' }}
+                      </div>
+                    </div>
+                    <n-button
+                      v-if="!invite.revoked_at"
+                      size="tiny"
+                      quaternary
+                      type="error"
+                      @click="handleRevokeInvite(invite.id)"
+                    >撤销</n-button>
+                  </div>
+                </div>
+              </div>
+
               <!-- Members list -->
               <div class="section">
                 <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">成员（{{ teamData.members.length }}）</div>
@@ -1011,6 +1040,8 @@ const renamingTeam = ref(false)
 const removingMember = ref<number | null>(null)
 const resendingMember = ref<number | null>(null)
 const editTeamName = ref('')
+const creatingInvite = ref(false)
+const newInviteCode = ref('')
 
 const { data: teamData, isLoading: teamLoading } = useQuery({
   queryKey: ['team-current'],
@@ -1019,6 +1050,13 @@ const { data: teamData, isLoading: teamLoading } = useQuery({
     editTeamName.value = data.name
     return data
   },
+  retry: false,
+})
+
+const { data: teamInvites } = useQuery({
+  queryKey: ['team-current', 'invites'],
+  queryFn: teamApi.listInvites,
+  enabled: computed(() => !!teamData.value && !!currentUserId.value && teamData.value.created_by === currentUserId.value),
   retry: false,
 })
 
@@ -1046,7 +1084,9 @@ async function handleAddMember() {
   addingMember.value = true
   try {
     const res = await teamApi.addMember(email)
-    if (res.data?.mail_sent === false) {
+    if (res.data?.existing_user) {
+      message.success(`已将 ${email} 加入当前空间`)
+    } else if (res.data?.mail_sent === false) {
       message.warning(`账号已建好，但邮件没发出：${res.error?.message || '请检查邮箱配置'}`)
     } else {
       message.success(`已向 ${email} 发送邀请，对方点邮件里的链接设置密码`)
@@ -1075,7 +1115,7 @@ async function handleResendInvite(userId: number) {
 async function handleRemoveMember(userId: number, name: string) {
   dialog.warning({
     title: '移除成员',
-    content: `将「${name}」移出团队？该账号会被删除。`,
+    content: `将「${name}」移出当前空间？该账号如果还在其他空间，会继续保留。`,
     positiveText: '移除',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -1091,6 +1131,43 @@ async function handleRemoveMember(userId: number, name: string) {
       }
     },
   })
+}
+
+async function handleCreateInvite() {
+  creatingInvite.value = true
+  newInviteCode.value = ''
+  try {
+    const invite = await teamApi.createInvite({ role: 'member', max_uses: 20, expires_in_days: 7 })
+    newInviteCode.value = invite.code
+    message.success('邀请码已生成，请现在复制保存')
+    queryClient.invalidateQueries({ queryKey: ['team-current', 'invites'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    creatingInvite.value = false
+  }
+}
+
+function handleRevokeInvite(id: number) {
+  dialog.warning({
+    title: '撤销邀请码',
+    content: '撤销后，这个邀请码不能再用于注册或加入空间。',
+    positiveText: '撤销',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await teamApi.revokeInvite(id)
+        message.success('邀请码已撤销')
+        queryClient.invalidateQueries({ queryKey: ['team-current', 'invites'] })
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
+}
+
+function isInviteExpired(value: number | null): boolean {
+  return !!value && value < Math.floor(Date.now() / 1000)
 }
 
 // ── Owner check ─────────────────────────────────────────────
@@ -1131,6 +1208,54 @@ const isOwner = computed(() => {
   font-size: 12px;
   color: #999;
   margin-top: 6px;
+}
+.invite-section {
+  padding: 14px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fbfbfa;
+}
+.invite-actions,
+.invite-code-row,
+.invite-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.invite-code-row {
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e9e9e6;
+  border-radius: 6px;
+}
+.invite-code-row code {
+  font-size: 12px;
+  color: #1a1d2e;
+}
+.invite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.invite-row {
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #eeeeeb;
+  border-radius: 6px;
+}
+.invite-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #37352f;
+}
+.invite-meta {
+  margin-top: 2px;
+  color: #777;
+  font-size: 12px;
 }
 .agent-block { margin-top: 16px; }
 .agent-block-head {

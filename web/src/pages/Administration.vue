@@ -239,7 +239,7 @@ const removingMember = ref<number | null>(null)
 function handleRemoveMember(m: { id: number; name: string; email: string }) {
   dialog.warning({
     title: '移除成员',
-    content: `将「${m.name || m.email}」移出该空间？该账号会被删除。`,
+    content: `将「${m.name || m.email}」移出该空间？如果该账号还在其他空间，会继续保留。`,
     positiveText: '移除',
     negativeText: '取消',
     onPositiveClick: async () => {

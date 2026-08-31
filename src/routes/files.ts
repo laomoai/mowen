@@ -3,6 +3,7 @@ import type { AuthVariables, Env } from '../types'
 import { sha256 } from '../utils/crypto'
 import { verifySession } from '../utils/session'
 import { getFolderScopedAccess } from '../utils/workspace'
+import { getActiveTeamForUser } from '../utils/members'
 import {
   canReadStoredFile,
   getFileMeta,
@@ -19,12 +20,13 @@ async function resolveViewer(c: { env: Env; req: { header: (n: string) => string
     const user = await verifySession(cookieHeader, c.env.SESSION_SECRET)
     if (user) {
       const userRow = await c.env.DB.prepare(
-        `SELECT id, team_id FROM _users WHERE email = ? AND status = 'active' LIMIT 1`,
-      ).bind(user.email).first<{ id: number; team_id: number | null }>()
+        `SELECT id, team_id, current_team_id FROM _users WHERE email = ? AND status = 'active' LIMIT 1`,
+      ).bind(user.email).first<{ id: number; team_id: number | null; current_team_id: number | null }>()
       if (userRow) {
+        const activeSpace = await getActiveTeamForUser(c.env.DB, userRow.id, userRow.current_team_id ?? userRow.team_id)
         return {
           userId: userRow.id,
-          teamId: userRow.team_id ?? undefined,
+          teamId: activeSpace?.id,
           allowedTables: null as string[] | null,
           allowedNoteRootIds: null as string[] | null,
           isAdminKey: false,

@@ -1,0 +1,189 @@
+import { mkdtempSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { app } from '../src/index'
+import { openSqlite } from '../src/db/sqlite'
+import { applyMigrations } from '../src/db/migrate'
+import { createLocalBucket } from '../src/storage/local-bucket'
+
+type TestEnv = {
+  DB: ReturnType<typeof openSqlite>['db']
+  BUCKET: ReturnType<typeof createLocalBucket>
+  ENVIRONMENT: string
+  ADMIN_KEY: string
+  SESSION_SECRET: string
+  PUBLIC_ORIGIN: string
+  ALLOW_PUBLIC_REGISTER: string
+}
+
+async function main() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'mowen-multi-space-'))
+  const sqlitePath = path.join(dir, 'test.sqlite')
+  const filesDir = path.join(dir, 'files')
+  mkdirSync(filesDir, { recursive: true })
+
+  const { db } = openSqlite(sqlitePath)
+  applyMigrations(sqlitePath, path.join(process.cwd(), 'migrations'))
+
+  const env: TestEnv = {
+    DB: db,
+    BUCKET: createLocalBucket(filesDir),
+    ENVIRONMENT: 'test',
+    ADMIN_KEY: 'test-admin-key',
+    SESSION_SECRET: 'test-session-secret',
+    PUBLIC_ORIGIN: 'http://local.test',
+    ALLOW_PUBLIC_REGISTER: 'false',
+  }
+  const executionCtx = {
+    waitUntil(promise: Promise<unknown>) { void promise },
+    passThroughOnException() {},
+  } as ExecutionContext
+
+  const adminCookie = await register(env, executionCtx, 'owner@example.com', 'owner-pass-1', 'Owner')
+  const ownerMe = await getMe(env, executionCtx, adminCookie)
+  const firstTeamId = ownerMe.current_team.id
+  await addNoteNode(db, firstTeamId, 'note_first', 'First Space Note')
+
+  const secondSpace = await requestJson(env, executionCtx, '/api/teams', {
+    method: 'POST',
+    headers: cookieHeaders(adminCookie),
+    body: JSON.stringify({ name: 'Second Space' }),
+  })
+  const secondTeamId = secondSpace.data.id
+  await addNoteNode(db, secondTeamId, 'note_second', 'Second Space Note')
+
+  await assertWorkspace(env, executionCtx, adminCookie, ['Second Space Note'], ['First Space Note'])
+  await requestJson(env, executionCtx, '/api/auth/switch-space', {
+    method: 'POST',
+    headers: cookieHeaders(adminCookie),
+    body: JSON.stringify({ team_id: firstTeamId }),
+  })
+  await assertWorkspace(env, executionCtx, adminCookie, ['First Space Note'], ['Second Space Note'])
+
+  await requestJson(env, executionCtx, '/api/auth/switch-space', {
+    method: 'POST',
+    headers: cookieHeaders(adminCookie),
+    body: JSON.stringify({ team_id: secondTeamId }),
+  })
+  const invite = await requestJson(env, executionCtx, '/api/teams/current/invites', {
+    method: 'POST',
+    headers: cookieHeaders(adminCookie),
+    body: JSON.stringify({ max_uses: 2, expires_in_days: 7 }),
+  })
+
+  const memberCookie = await register(env, executionCtx, 'member@example.com', 'member-pass-1', 'Member', invite.data.code)
+  const memberMe = await getMe(env, executionCtx, memberCookie)
+  if (memberMe.current_team.id !== secondTeamId) throw new Error('invite registration did not select invited space')
+  if (memberMe.spaces.length !== 1) throw new Error('invited member should only have one space')
+
+  const createdKey = await requestJson(env, executionCtx, '/api/admin/keys', {
+    method: 'POST',
+    headers: cookieHeaders(memberCookie),
+    body: JSON.stringify({ name: 'Mini Program', type: 'readonly', scope: 'all' }),
+  })
+  const apiKey = createdKey.data.key
+  await assertViewerWorkspace(env, executionCtx, apiKey, ['Second Space Note'], ['First Space Note'])
+
+  console.log('multi-space smoke ok')
+}
+
+async function register(
+  env: TestEnv,
+  executionCtx: ExecutionContext,
+  email: string,
+  password: string,
+  name: string,
+  inviteCode?: string,
+): Promise<string> {
+  const res = await app.fetch(new Request('http://local.test/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, name, invite_code: inviteCode }),
+  }), env, executionCtx)
+  const body = await res.json() as Record<string, unknown>
+  if (res.status < 200 || res.status >= 300) throw new Error(`register failed ${res.status}: ${JSON.stringify(body)}`)
+  const cookie = res.headers.get('set-cookie')
+  if (!cookie) throw new Error('register did not set session cookie')
+  return cookie.split(';')[0]
+}
+
+async function getMe(env: TestEnv, executionCtx: ExecutionContext, cookie: string) {
+  const body = await requestJson(env, executionCtx, '/api/auth/me', {
+    headers: cookieHeaders(cookie),
+  })
+  return body.data as {
+    current_team: { id: number; name: string; role: string }
+    spaces: Array<{ id: number; name: string; role: string }>
+  }
+}
+
+async function addNoteNode(db: TestEnv['DB'], teamId: number, id: string, title: string) {
+  await db.prepare(
+    `INSERT INTO _notes (id, title, content, sort_order, team_id) VALUES (?, ?, ?, 0, ?)`,
+  ).bind(id, title, `# ${title}`, teamId).run()
+  await db.prepare(
+    `INSERT INTO _workspace_nodes (id, kind, parent_id, sort_order, title, ref, team_id)
+     VALUES (?, 'note', NULL, 0, ?, ?, ?)`,
+  ).bind(`wn_${id}`, title, id, teamId).run()
+}
+
+async function assertWorkspace(
+  env: TestEnv,
+  executionCtx: ExecutionContext,
+  cookie: string,
+  expected: string[],
+  forbidden: string[],
+) {
+  const body = await requestJson(env, executionCtx, '/api/workspace/tree', {
+    headers: cookieHeaders(cookie),
+  })
+  assertTitles(body, expected, forbidden)
+}
+
+async function assertViewerWorkspace(
+  env: TestEnv,
+  executionCtx: ExecutionContext,
+  apiKey: string,
+  expected: string[],
+  forbidden: string[],
+) {
+  const body = await requestJson(env, executionCtx, '/api/viewer/workspace', {
+    headers: { 'X-API-Key': apiKey },
+  })
+  assertTitles(body, expected, forbidden)
+}
+
+function assertTitles(body: unknown, expected: string[], forbidden: string[]) {
+  const text = JSON.stringify(body)
+  for (const title of expected) {
+    if (!text.includes(title)) throw new Error(`workspace missing ${title}`)
+  }
+  for (const title of forbidden) {
+    if (text.includes(title)) throw new Error(`workspace leaked ${title}`)
+  }
+}
+
+async function requestJson(
+  env: TestEnv,
+  executionCtx: ExecutionContext,
+  pathname: string,
+  init: RequestInit = {},
+) {
+  const headers = new Headers(init.headers)
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const res = await app.fetch(new Request(`http://local.test${pathname}`, { ...init, headers }), env, executionCtx)
+  const body = await res.json() as Record<string, any>
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`${pathname} failed with ${res.status}: ${JSON.stringify(body)}`)
+  }
+  return body
+}
+
+function cookieHeaders(cookie: string) {
+  return { Cookie: cookie, 'Content-Type': 'application/json' }
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

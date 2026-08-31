@@ -21,6 +21,9 @@
         <n-form-item v-if="mode === 'register'" label="名称">
           <n-input v-model:value="name" placeholder="显示名称" />
         </n-form-item>
+        <n-form-item v-if="mode === 'register' && !bootstrapOpen" label="邀请码">
+          <n-input v-model:value="inviteCode" placeholder="输入空间邀请码" />
+        </n-form-item>
         <n-form-item label="密码">
           <n-input
             v-model:value="password"
@@ -31,7 +34,7 @@
           />
         </n-form-item>
         <n-button type="primary" block :loading="loading" @click="submit">
-          {{ mode === 'register' ? '创建管理员账号' : '登录' }}
+          {{ registerButtonText }}
         </n-button>
       </n-form>
 
@@ -46,6 +49,9 @@
 
       <div class="login-links">
         <button v-if="mode === 'login'" type="button" class="link-btn" @click="mode = 'forgot'">忘记密码</button>
+        <button v-if="mode === 'login' && inviteRegisterOpen" type="button" class="link-btn" @click="mode = 'register'">
+          使用邀请码注册
+        </button>
         <button v-if="mode === 'login' && bootstrapOpen" type="button" class="link-btn" @click="mode = 'register'">
           首次初始化
         </button>
@@ -67,11 +73,19 @@ const router = useRouter()
 const email = ref('')
 const name = ref('')
 const password = ref('')
+const inviteCode = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
 const infoMsg = ref('')
 const mode = ref<'login' | 'register' | 'forgot'>('login')
 const bootstrapOpen = ref(false)
+const publicRegisterOpen = ref(false)
+
+const inviteRegisterOpen = computed(() => !bootstrapOpen.value)
+const registerButtonText = computed(() => {
+  if (mode.value !== 'register') return '登录'
+  return bootstrapOpen.value ? '创建管理员账号' : '注册并加入空间'
+})
 
 const queryError = computed(() => {
   const err = route.query.error as string
@@ -81,9 +95,14 @@ const queryError = computed(() => {
 
 onMounted(() => {
   if (queryError.value) errorMsg.value = queryError.value
-  http.get<{ data: { bootstrap: boolean } }>('/auth/setup-status')
+  if (typeof route.query.invite === 'string' && route.query.invite) {
+    inviteCode.value = route.query.invite
+    mode.value = 'register'
+  }
+  http.get<{ data: { bootstrap: boolean; publicRegister: boolean } }>('/auth/setup-status')
     .then((r) => {
       bootstrapOpen.value = !!r.data.data.bootstrap
+      publicRegisterOpen.value = !!r.data.data.publicRegister
       if (bootstrapOpen.value) mode.value = 'register'
     })
     .catch(() => {})
@@ -99,6 +118,7 @@ async function submit() {
         email: email.value,
         password: password.value,
         name: name.value || undefined,
+        invite_code: inviteCode.value || undefined,
       })
     } else {
       await http.post('/auth/login', {
@@ -111,7 +131,7 @@ async function submit() {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Request failed'
     if (msg.toLowerCase().includes('closed') || msg.toLowerCase().includes('403')) {
-      errorMsg.value = '注册已关闭，请联系管理员邀请。'
+      errorMsg.value = publicRegisterOpen.value ? msg : '注册已关闭，请联系管理员提供邀请码。'
     } else {
       errorMsg.value = msg
     }

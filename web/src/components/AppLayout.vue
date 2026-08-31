@@ -44,6 +44,14 @@
         </button>
       </div>
 
+      <div v-if="currentUser?.spaces?.length && currentUser.spaces.length > 1" class="space-switcher">
+        <select class="space-select" :value="currentSpaceId" @change="handleSwitchSpace">
+          <option v-for="space in currentUser.spaces" :key="space.id" :value="space.id">
+            {{ space.name }}
+          </option>
+        </select>
+      </div>
+
       <div class="panel-header">
         <input v-model="workspaceSearch" class="panel-search-input" placeholder="搜索…" />
         <div v-if="!narrow" class="add-wrap" ref="addWrapRef">
@@ -181,7 +189,7 @@ import {
   DocumentTextOutline as NotesIcon,
   ShieldCheckmarkOutline as AdminIcon,
 } from '@vicons/ionicons5'
-import { api, notesApi, http, avatarUrl, workspaceApi, type TableMeta, type NoteListItem, type WorkspaceNode } from '@/api/client'
+import { api, notesApi, http, avatarUrl, workspaceApi, switchSpace, getCurrentUser, type TableMeta, type NoteListItem, type WorkspaceNode } from '@/api/client'
 import { refreshWorkspace, openWorkspaceNode } from '@/composables/workspaceNav'
 import { useNarrow } from '@/composables/useNarrow'
 import { ASSISTANT_ASK } from '@/composables/assistantAsk'
@@ -1041,6 +1049,23 @@ watch(() => route.fullPath, () => {
   currentUser.value = getCachedUser()
 })
 
+const currentSpaceId = computed(() => currentUser.value?.current_team?.id || currentUser.value?.team?.id || '')
+
+async function handleSwitchSpace(event: Event) {
+  const value = Number((event.target as HTMLSelectElement).value)
+  if (!Number.isInteger(value) || value <= 0 || value === currentSpaceId.value) return
+  try {
+    await switchSpace(value)
+    resetAuthState()
+    currentUser.value = await getCurrentUser()
+    queryClient.invalidateQueries()
+    router.push('/')
+    message.success('已切换空间')
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
 function handleMenuItem(key: string) {
   showUserMenu.value = false
   if (key === 'settings') {
@@ -1221,6 +1246,21 @@ async function logout() {
   font-weight: 700;
   color: #37352f;
   letter-spacing: 0;
+}
+.space-switcher {
+  padding: 0 12px 12px;
+  border-bottom: 1px solid #ececea;
+}
+.space-select {
+  width: 100%;
+  height: 30px;
+  border: 1px solid #e3e3df;
+  border-radius: 8px;
+  background: #fff;
+  color: #37352f;
+  font-size: 13px;
+  padding: 0 8px;
+  outline: none;
 }
 .ai-launch {
   margin-left: auto;

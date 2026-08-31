@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
+import type { D1PreparedStatement } from '../db/sqlite'
 import { requireWriteMiddleware, requireAdminMiddleware } from '../middleware/auth'
-import { isValidEmail } from '../utils/members'
+import { addTeamMember, isValidEmail, listUserSpaces } from '../utils/members'
 import { generateApiKey, sha256 } from '../utils/crypto'
 import { withAvatar } from '../utils/avatar'
 
@@ -437,13 +438,18 @@ admin.delete('/keys/:id/permanent', async (c) => {
  */
 admin.get('/users', requireAdminMiddleware, async (c) => {
   const rows = await c.env.DB
-    .prepare(`SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.created_at, u.last_login, u.team_id,
+    .prepare(`SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.created_at, u.last_login, u.team_id, u.current_team_id,
               t.name as team_name
-              FROM _users u LEFT JOIN _teams t ON t.id = u.team_id ORDER BY u.id ASC`)
-    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null; team_id: number | null; team_name: string | null }>()
+              FROM _users u LEFT JOIN _teams t ON t.id = u.current_team_id ORDER BY u.id ASC`)
+    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null; team_id: number | null; current_team_id: number | null; team_name: string | null }>()
 
+  const data = await Promise.all(rows.results.map(async (u) => ({
+    ...u,
+    picture: withAvatar(u.picture, u.email),
+    spaces: await listUserSpaces(c.env.DB, u.id),
+  })))
   return c.json({
-    data: rows.results.map((u) => ({ ...u, picture: withAvatar(u.picture, u.email) })),
+    data,
   })
 })
 
@@ -477,12 +483,13 @@ admin.post('/users', requireAdminMiddleware, async (c) => {
   const teamId = teamResult.meta.last_row_id
 
   const result = await c.env.DB
-    .prepare(`INSERT INTO _users (email, name, role, team_id) VALUES (?, ?, ?, ?)`)
-    .bind(email, name, role, teamId)
+    .prepare(`INSERT INTO _users (email, name, role, team_id, current_team_id) VALUES (?, ?, ?, ?, ?)`)
+    .bind(email, name, role, teamId, teamId)
     .run()
 
   await c.env.DB.prepare(`UPDATE _teams SET created_by = ? WHERE id = ?`)
     .bind(result.meta.last_row_id, teamId).run()
+  await addTeamMember(c.env.DB, { teamId: Number(teamId), userId: Number(result.meta.last_row_id), role: 'owner' })
 
   return c.json({ data: { id: result.meta.last_row_id, email, name, role, status: 'active' } }, 201)
 })

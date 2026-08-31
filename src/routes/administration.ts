@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireAdminMiddleware } from '../middleware/auth'
-import { hardDeleteMember, hardDeleteSpace, isValidEmail } from '../utils/members'
+import { addTeamMember, hardDeleteSpace, isValidEmail, removeTeamMember } from '../utils/members'
 import { withAvatar } from '../utils/avatar'
 
 const administration = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
@@ -27,7 +27,7 @@ administration.get('/spaces', async (c) => {
 
   const [memberCounts, tableCounts, noteCounts] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT team_id, COUNT(*) as count FROM _users WHERE team_id IN (${placeholders}) GROUP BY team_id`
+      `SELECT team_id, COUNT(*) as count FROM _team_members WHERE team_id IN (${placeholders}) AND status = 'active' GROUP BY team_id`
     ).bind(...teamIds).all<{ team_id: number; count: number }>(),
     c.env.DB.prepare(
       `SELECT team_id, COUNT(*) as count FROM _meta WHERE team_id IN (${placeholders}) GROUP BY team_id`
@@ -73,10 +73,7 @@ administration.post('/spaces', async (c) => {
 
   const existing = await c.env.DB.prepare(
     `SELECT id FROM _users WHERE email = ? LIMIT 1`
-  ).bind(ownerEmail).first()
-  if (existing) {
-    return c.json({ error: { code: 'USER_EXISTS', message: `User "${ownerEmail}" already exists in the system` } }, 409)
-  }
+  ).bind(ownerEmail).first<{ id: number }>()
 
   // Step 1: create team (created_by is NULL initially due to circular reference)
   const teamResult = await c.env.DB.prepare(
@@ -85,18 +82,22 @@ administration.post('/spaces', async (c) => {
   const teamId = teamResult.meta.last_row_id
 
   try {
-    // Step 2: create owner user
-    const userResult = await c.env.DB.prepare(
-      `INSERT INTO _users (email, name, role, status, team_id) VALUES (?, ?, 'user', 'active', ?)`
-    ).bind(ownerEmail, ownerEmail, teamId).run()
-    const userId = userResult.meta.last_row_id
+    // Step 2: create or reuse owner user. One account may own multiple spaces.
+    let userId = existing?.id
+    if (!userId) {
+      const userResult = await c.env.DB.prepare(
+        `INSERT INTO _users (email, name, role, status, team_id, current_team_id) VALUES (?, ?, 'user', 'active', ?, ?)`
+      ).bind(ownerEmail, ownerEmail, teamId, teamId).run()
+      userId = Number(userResult.meta.last_row_id)
+    }
 
     // Step 3: backfill created_by
     await c.env.DB.prepare(
       `UPDATE _teams SET created_by = ? WHERE id = ?`
     ).bind(userId, teamId).run()
+    await addTeamMember(c.env.DB, { teamId: Number(teamId), userId: Number(userId), role: 'owner' })
 
-    try {
+    if (!existing) try {
       const { sendInviteEmail } = await import('./auth')
       await sendInviteEmail(c.env, Number(userId), ownerEmail)
     } catch (mailErr) {
@@ -104,7 +105,7 @@ administration.post('/spaces', async (c) => {
     }
 
     return c.json({
-      data: { id: teamId, name, owner_email: ownerEmail, owner_id: userId }
+      data: { id: teamId, name, owner_email: ownerEmail, owner_id: userId, existing_user: Boolean(existing) }
     }, 201)
   } catch (err) {
     // Rollback: delete orphaned team
@@ -127,8 +128,12 @@ administration.get('/spaces/:id', async (c) => {
        WHERE t.id = ?`
     ).bind(spaceId).first<{ id: number; name: string; created_by: number | null; created_at: number; owner_email: string | null }>(),
     c.env.DB.prepare(
-      `SELECT id, email, name, picture, role, status, last_login FROM _users WHERE team_id = ? ORDER BY id ASC`
-    ).bind(spaceId).all<{ id: number; email: string; name: string; picture: string; role: string; status: string }>(),
+      `SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.last_login, tm.role AS space_role, tm.joined_at
+       FROM _team_members tm
+       JOIN _users u ON u.id = tm.user_id
+       WHERE tm.team_id = ? AND tm.status = 'active'
+       ORDER BY tm.joined_at ASC, u.id ASC`
+    ).bind(spaceId).all<{ id: number; email: string; name: string; picture: string; role: string; status: string; space_role: string; joined_at: number }>(),
   ])
 
   if (!team) {
@@ -169,7 +174,7 @@ administration.patch('/spaces/:id', async (c) => {
 
 /**
  * POST /api/admin/spaces/:id/members
- * Add a new member to a Space (email must not exist in system)
+ * Add a member to a Space. Existing users can join multiple Spaces.
  */
 administration.post('/spaces/:id/members', async (c) => {
   const spaceId = parseInt(c.req.param('id'), 10)
@@ -188,19 +193,26 @@ administration.post('/spaces/:id/members', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Space not found' } }, 404)
   }
 
-  // Email must be new
   const existing = await c.env.DB.prepare(
     `SELECT id FROM _users WHERE email = ? LIMIT 1`
-  ).bind(email).first()
+  ).bind(email).first<{ id: number }>()
   if (existing) {
-    return c.json({ error: { code: 'USER_EXISTS', message: `User "${email}" already belongs to another space` } }, 409)
+    const member = await c.env.DB.prepare(
+      `SELECT 1 FROM _team_members WHERE team_id = ? AND user_id = ? AND status = 'active' LIMIT 1`,
+    ).bind(spaceId, existing.id).first()
+    if (member) {
+      return c.json({ error: { code: 'ALREADY_MEMBER', message: `User "${email}" is already in this space` } }, 409)
+    }
+    await addTeamMember(c.env.DB, { teamId: spaceId, userId: existing.id, role: 'member', invitedBy: c.get('userId') ?? null })
+    return c.json({ data: { id: existing.id, email, existing_user: true } }, 201)
   }
 
   const result = await c.env.DB.prepare(
-    `INSERT INTO _users (email, name, role, status, team_id) VALUES (?, ?, 'user', 'active', ?)`
-  ).bind(email, email, spaceId).run()
+    `INSERT INTO _users (email, name, role, status, team_id, current_team_id) VALUES (?, ?, 'user', 'active', ?, ?)`
+  ).bind(email, email, spaceId, spaceId).run()
 
   const newId = result.meta.last_row_id
+  await addTeamMember(c.env.DB, { teamId: spaceId, userId: Number(newId), role: 'member', invitedBy: c.get('userId') ?? null })
   try {
     const { sendInviteEmail } = await import('./auth')
     await sendInviteEmail(c.env, Number(newId), email)
@@ -213,7 +225,7 @@ administration.post('/spaces/:id/members', async (c) => {
 
 /**
  * DELETE /api/admin/spaces/:id/members/:userId
- * Remove a member from a Space (hard delete). Owner cannot be removed.
+ * Remove a member from a Space. Owner cannot be removed.
  */
 administration.delete('/spaces/:id/members/:userId', async (c) => {
   const spaceId = parseInt(c.req.param('id'), 10)
@@ -231,18 +243,12 @@ administration.delete('/spaces/:id/members/:userId', async (c) => {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot remove the Space owner' } }, 400)
   }
 
-  // Verify target user belongs to this space
-  const targetUser = await c.env.DB.prepare(
-    `SELECT id FROM _users WHERE id = ? AND team_id = ?`
-  ).bind(targetId, spaceId).first()
-  if (!targetUser) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found in this space' } }, 404)
-  }
-
   try {
-    await hardDeleteMember(c.env.DB, targetId)
+    await removeTeamMember(c.env.DB, { teamId: spaceId, userId: targetId })
   } catch (err) {
-    return c.json({ error: { code: 'DELETE_FAILED', message: (err as Error).message || '移除成员失败' } }, 500)
+    const e = err as { status?: number; code?: string; message?: string }
+    const status = (e.status === 400 || e.status === 403 || e.status === 404 || e.status === 409) ? e.status : 500
+    return c.json({ error: { code: e.code || 'DELETE_FAILED', message: e.message || '移除成员失败' } }, status)
   }
 
   return c.json({ data: { success: true } })

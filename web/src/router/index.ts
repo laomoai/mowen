@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getCurrentUser } from '@/api/client'
+import { getCurrentUser, type CurrentUser } from '@/api/client'
 
 // 模块级缓存，避免每次路由跳转都发请求
-let authState: { authed: boolean; user: { email: string; name: string; picture: string; role?: string } | null } = {
+let authState: { authed: boolean; user: CurrentUser | null } = {
   authed: false,
   user: null,
 }
