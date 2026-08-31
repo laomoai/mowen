@@ -84,6 +84,30 @@ async function main() {
   const apiKey = createdKey.data.key
   await assertViewerWorkspace(env, executionCtx, apiKey, ['Second Space Note'], ['First Space Note'])
 
+  const writeKey = await requestJson(env, executionCtx, '/api/admin/keys', {
+    method: 'POST',
+    headers: cookieHeaders(memberCookie),
+    body: JSON.stringify({ name: 'Agent Write Key', type: 'readwrite', scope: 'groups', group_ids: [] }),
+  })
+  await expectStatus(env, executionCtx, '/api/admin/keys', {
+    headers: { 'X-API-Key': writeKey.data.key },
+  }, 403)
+  await expectStatus(env, executionCtx, '/api/teams', {
+    headers: { 'X-API-Key': writeKey.data.key },
+  }, 403)
+
+  const viewerInvite = await requestJson(env, executionCtx, '/api/teams/current/invites', {
+    method: 'POST',
+    headers: cookieHeaders(adminCookie),
+    body: JSON.stringify({ role: 'viewer', max_uses: 1 }),
+  })
+  const viewerCookie = await register(env, executionCtx, 'viewer@example.com', 'viewer-pass-1', 'Viewer', viewerInvite.data.code)
+  await expectStatus(env, executionCtx, '/api/notes', {
+    method: 'POST',
+    headers: cookieHeaders(viewerCookie),
+    body: JSON.stringify({ title: 'Viewer Write Attempt', content: '' }),
+  }, 403)
+
   console.log('multi-space smoke ok')
 }
 
@@ -177,6 +201,22 @@ async function requestJson(
     throw new Error(`${pathname} failed with ${res.status}: ${JSON.stringify(body)}`)
   }
   return body
+}
+
+async function expectStatus(
+  env: TestEnv,
+  executionCtx: ExecutionContext,
+  pathname: string,
+  init: RequestInit,
+  expectedStatus: number,
+) {
+  const headers = new Headers(init.headers)
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const res = await app.fetch(new Request(`http://local.test${pathname}`, { ...init, headers }), env, executionCtx)
+  if (res.status !== expectedStatus) {
+    const text = await res.text()
+    throw new Error(`${pathname} expected ${expectedStatus}, got ${res.status}: ${text}`)
+  }
 }
 
 function cookieHeaders(cookie: string) {

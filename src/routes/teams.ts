@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { AuthVariables, Env } from '../types'
-import { requireWriteMiddleware } from '../middleware/auth'
+import { requireSessionMiddleware, requireWriteMiddleware } from '../middleware/auth'
 import {
   addTeamMember,
   createInvite,
@@ -31,6 +31,8 @@ async function requireOwner(c: AppContext, teamId: number): Promise<Response | n
 }
 
 const teams = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
+
+teams.use('*', requireSessionMiddleware)
 
 teams.get('/', async (c) => {
   const userId = c.get('userId')

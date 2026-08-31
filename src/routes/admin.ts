@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import type { AppPreparedStatement } from '../db/sqlite'
-import { requireWriteMiddleware, requireAdminMiddleware } from '../middleware/auth'
+import { requireWriteMiddleware, requireAdminMiddleware, requireSessionMiddleware } from '../middleware/auth'
 import { addTeamMember, isValidEmail, listUserSpaces } from '../utils/members'
 import { generateApiKey, sha256 } from '../utils/crypto'
 import { withAvatar } from '../utils/avatar'
@@ -69,6 +69,7 @@ async function validateNoteRootIds(
 }
 
 // 所有 admin 路由都需要读写权限
+admin.use('*', requireSessionMiddleware)
 admin.use('*', requireWriteMiddleware)
 
 // ── API Key 管理 ──────────────────────────────────────────────

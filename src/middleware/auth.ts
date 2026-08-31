@@ -33,6 +33,7 @@ export const authMiddleware: MiddlewareHandler<{
 
       c.set('keyType', 'readwrite')
       c.set('keyScope', 'all')
+      c.set('authMode', 'session')
       c.set('allowedTables', null)
       c.set('allowedGroupIds', null)
       c.set('allowedNoteRootIds', null)
@@ -40,7 +41,10 @@ export const authMiddleware: MiddlewareHandler<{
       c.set('userId', userRow.id)
       c.set('userRole', userRow.role)
       const activeSpace = await getActiveTeamForUser(c.env.DB, userRow.id, userRow.current_team_id ?? userRow.team_id)
-      if (activeSpace) c.set('teamId', activeSpace.id)
+      if (activeSpace) {
+        c.set('teamId', activeSpace.id)
+        c.set('spaceRole', activeSpace.role)
+      }
       return next()
     }
   }
@@ -54,6 +58,7 @@ export const authMiddleware: MiddlewareHandler<{
 
   // 2a. ADMIN_KEY：超级管理员，不设 userId，绕过所有 owner 校验
   if (c.env.ADMIN_KEY && apiKey === c.env.ADMIN_KEY) {
+    c.set('authMode', 'adminKey')
     c.set('keyType', 'readwrite')
     c.set('keyScope', 'all')
     c.set('allowedTables', null)
@@ -76,6 +81,7 @@ export const authMiddleware: MiddlewareHandler<{
 
   c.set('keyType', row.type)
   c.set('keyScope', row.scope)
+  c.set('authMode', 'apiKey')
 
   // 异步更新 last_used_at（不阻塞请求）
   c.executionCtx.waitUntil(
@@ -128,6 +134,29 @@ export const requireWriteMiddleware: MiddlewareHandler<{
     return c.json(
       { error: { code: 'FORBIDDEN', message: 'This operation requires a read-write API Key' } },
       403
+    )
+  }
+  if (c.get('authMode') === 'session' && c.get('spaceRole') === 'viewer') {
+    return c.json(
+      { error: { code: 'FORBIDDEN', message: 'This Space membership is read-only' } },
+      403
+    )
+  }
+  return next()
+}
+
+/**
+ * Web/session-only protection: API keys are for data access and Agent/mini-program
+ * usage, not for managing accounts, teams, or API keys.
+ */
+export const requireSessionMiddleware: MiddlewareHandler<{
+  Bindings: Env
+  Variables: AuthVariables
+}> = async (c, next) => {
+  if (c.get('authMode') !== 'session') {
+    return c.json(
+      { error: { code: 'FORBIDDEN', message: 'This operation requires a signed-in web session' } },
+      403,
     )
   }
   return next()

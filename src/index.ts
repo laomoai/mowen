@@ -115,7 +115,7 @@ function openApiSpec(serverUrl: string) {
     info: {
       title: '墨问 MoWen API',
       version: '2.2.0',
-      description: `墨问 HTTP API。鉴权：\`X-API-Key\`。
+      description: `墨问 HTTP API。Agent / 小程序使用 \`X-API-Key\`；Web 管理接口使用登录后的 Cookie Session。
 
 表格用 \`name\`（如 tbl_abc123），显示名是 \`title\`；写记录用字段 \`column_name\`。
 文件夹权限：\`scope=groups\` 的 Key 可访问所选文件夹里的表格和笔记。工作区树见 \`/api/workspace/*\`。
@@ -129,6 +129,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
     components: {
       securitySchemes: {
         ApiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
+        CookieAuth: { type: 'apiKey', in: 'cookie', name: 'mowen_session' },
       },
       schemas: {
         Error: {
@@ -1163,7 +1164,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/notes': {
         get: {
           summary: 'List notes',
-          description: 'Returns notes at root level (parent_id IS NULL) by default. Pass `parent_id` to list children of a specific note. Regular users only see their own notes; ADMIN_KEY sees all.',
+          description: 'Returns notes at root level (parent_id IS NULL) by default. Pass `parent_id` to list children of a specific note. Session users see notes in the active Space; API keys see notes allowed by the key scope.',
           parameters: [
             { name: 'parent_id', in: 'query', schema: { type: 'string' }, description: 'Filter by parent note ID. Omit or pass "root" for top-level notes.' },
           ],
@@ -1639,7 +1640,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/teams': {
         get: {
           summary: 'List spaces for current signed-in user',
-          security: [],
+          security: [{ CookieAuth: [] }],
           responses: {
             '200': {
               description: 'Visible spaces for the current session user',
@@ -1662,7 +1663,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
         },
         post: {
           summary: 'Create a new space and switch to it',
-          security: [],
+          security: [{ CookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -1712,7 +1713,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/teams/current/members/{userId}/invite': {
         post: {
           summary: 'Resend invite email to a current space member',
-          security: [],
+          security: [{ CookieAuth: [] }],
           parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'integer' } }],
           responses: {
             '200': { description: 'Invite email sent' },
@@ -1726,7 +1727,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/teams/current/invites': {
         get: {
           summary: 'List invite codes for current space',
-          security: [],
+          security: [{ CookieAuth: [] }],
           responses: {
             '200': {
               description: 'Current space invite codes',
@@ -1750,7 +1751,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
         },
         post: {
           summary: 'Create an invite code for current space',
-          security: [],
+          security: [{ CookieAuth: [] }],
           requestBody: {
             required: false,
             content: {
@@ -1788,7 +1789,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/teams/current/invites/{id}': {
         delete: {
           summary: 'Revoke an invite code',
-          security: [],
+          security: [{ CookieAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
           responses: {
             '200': { description: 'Invite revoked' },
@@ -1813,7 +1814,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
         get: {
           summary: 'Get current signed-in user',
           description: 'Returns the signed-in user, the active space, and every space the account belongs to. The legacy team field mirrors current_team for older clients.',
-          security: [],
+          security: [{ CookieAuth: [] }],
           responses: {
             '200': {
               description: 'Current session user',
@@ -1835,7 +1836,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/auth/switch-space': {
         post: {
           summary: 'Switch active space for current signed-in user',
-          security: [],
+          security: [{ CookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -1861,7 +1862,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/auth/join': {
         post: {
           summary: 'Join a space with an invite code',
-          security: [],
+          security: [{ CookieAuth: [] }],
           requestBody: {
             required: true,
             content: {

@@ -52,6 +52,7 @@ export type ApiKeyRow = {
 
 // 经过 auth 中间件后挂载到 context 上的变量
 export type AuthVariables = {
+  authMode: 'session' | 'apiKey' | 'adminKey'
   keyType: 'readonly' | 'readwrite'
   keyScope: 'all' | 'groups'
   allowedTables: string[] | null // null = all tables, string[] = restricted
@@ -60,5 +61,6 @@ export type AuthVariables = {
   user?: SessionUser
   userId?: number               // _users.id，ADMIN_KEY 时为 undefined
   userRole?: 'admin' | 'user'   // _users.role
+  spaceRole?: 'owner' | 'admin' | 'member' | 'viewer'
   teamId?: number               // _users.team_id，ADMIN_KEY 时为 undefined
 }
