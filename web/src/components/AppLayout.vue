@@ -44,14 +44,6 @@
         </button>
       </div>
 
-      <div v-if="currentUser?.spaces?.length && currentUser.spaces.length > 1" class="space-switcher">
-        <select class="space-select" :value="currentSpaceId" @change="handleSwitchSpace">
-          <option v-for="space in currentUser.spaces" :key="space.id" :value="space.id">
-            {{ space.name }}
-          </option>
-        </select>
-      </div>
-
       <div class="panel-header">
         <input v-model="workspaceSearch" class="panel-search-input" placeholder="搜索…" />
         <div v-if="!narrow" class="add-wrap" ref="addWrapRef">
@@ -66,7 +58,57 @@
 
       <!-- Scrollable content area -->
       <div class="sidebar-scroll">
-        <div class="table-list">
+        <template v-if="hasMultipleSpaces">
+          <div class="space-tree">
+            <template v-for="(space, index) in sidebarSpaces" :key="space.id">
+              <button
+                type="button"
+                class="space-tree-row"
+                :class="{ active: space.id === currentSpaceId }"
+                @click="space.id === currentSpaceId ? null : handleSwitchSpaceId(space.id)"
+              >
+                <span class="space-tree-arrow">{{ space.id === currentSpaceId ? '▾' : '›' }}</span>
+                <span class="space-tree-name">{{ space.name }}</span>
+              </button>
+              <div v-if="space.id === currentSpaceId" class="space-tree-panel">
+                <div class="table-list">
+                  <n-spin v-if="workspaceLoading" size="small" style="padding: 20px; display: flex; justify-content: center;" />
+                  <div v-else-if="workspaceRoots.length === 0" class="panel-empty">
+                    {{ workspaceSearch ? '没有匹配项' : '工作区是空的' }}
+                  </div>
+                  <WorkspaceTreeItem
+                    v-for="node in workspaceRoots"
+                    :key="`${node.id}:${node.parent_id || ''}`"
+                    :node="node"
+                    :children="workspaceChildrenMap.get(node.id) ?? []"
+                    :children-map="workspaceChildrenMap"
+                    :active-table="activeTable"
+                    :active-note-id="activeNoteId"
+                    :expanded-ids="expandedWorkspace"
+                    :item-style="tableItemStyle"
+                    :drop-target-id="wsDropState.id"
+                    :drop-position="wsDropState.position"
+                    :folder-options="folderOptions"
+                    @select="selectWorkspaceNode"
+                    @toggle="toggleWorkspaceFolder"
+                    @add-here="onAddHere"
+                    @add-in="onAddIn"
+                    @rename="openRenameModal"
+                    @move="onManageMove"
+                    @delete-folder="onDeleteFolder"
+                    @delete="onDeleteLeaf"
+                    @archive="onArchiveNode"
+                    @change-icon="openFolderIconPicker"
+                    @reorder="handleWorkspaceReorder"
+                    @update:drop-state="wsDropState = $event"
+                  />
+                </div>
+              </div>
+              <div v-if="index < sidebarSpaces.length - 1" class="space-divider" />
+            </template>
+          </div>
+        </template>
+        <div v-else class="table-list">
           <n-spin v-if="workspaceLoading" size="small" style="padding: 20px; display: flex; justify-content: center;" />
           <div v-else-if="workspaceRoots.length === 0" class="panel-empty">
             {{ workspaceSearch ? '没有匹配项' : '工作区是空的' }}
@@ -98,20 +140,31 @@
             @update:drop-state="wsDropState = $event"
           />
         </div>
-
-        <div
-          class="kb-entry"
-          :class="{ active: route.path.startsWith('/archive') || route.path.startsWith('/knowledge-base') }"
-          @click="router.push('/archive')"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          <span>归档</span>
-          <span v-if="archivedFolders?.length" class="kb-badge">{{ archivedFolders.length }}</span>
-        </div>
       </div>
 
       <!-- Footer -->
       <div class="sidebar-footer">
+        <div class="sidebar-utilities">
+          <button
+            type="button"
+            class="utility-entry"
+            :class="{ active: route.path.startsWith('/archive') || route.path.startsWith('/knowledge-base') }"
+            @click="openArchive"
+          >
+            <n-icon :component="ArchiveIcon" size="15" />
+            <span>归档</span>
+            <span v-if="archivedFolders?.length" class="kb-badge">{{ archivedFolders.length }}</span>
+          </button>
+          <button
+            type="button"
+            class="utility-entry"
+            :class="{ active: route.path === '/settings' && route.query.tab === 'trash' }"
+            @click="openTrash"
+          >
+            <n-icon :component="TrashIcon" size="15" />
+            <span>回收站</span>
+          </button>
+        </div>
         <transition name="menu-slide">
           <div v-if="showUserMenu" class="user-menu" @click.stop>
             <div class="user-menu-item" @click.stop="handleMenuItem('settings')">
@@ -188,6 +241,8 @@ import {
   LogOutOutline as LogoutIcon,
   DocumentTextOutline as NotesIcon,
   ShieldCheckmarkOutline as AdminIcon,
+  ArchiveOutline as ArchiveIcon,
+  TrashOutline as TrashIcon,
 } from '@vicons/ionicons5'
 import { api, notesApi, http, avatarUrl, workspaceApi, switchSpace, getCurrentUser, type TableMeta, type NoteListItem, type WorkspaceNode } from '@/api/client'
 import { refreshWorkspace, openWorkspaceNode } from '@/composables/workspaceNav'
@@ -1050,9 +1105,15 @@ watch(() => route.fullPath, () => {
 })
 
 const currentSpaceId = computed(() => currentUser.value?.current_team?.id || currentUser.value?.team?.id || '')
+const sidebarSpaces = computed(() => currentUser.value?.spaces ?? [])
+const hasMultipleSpaces = computed(() => sidebarSpaces.value.length > 1)
 
 async function handleSwitchSpace(event: Event) {
   const value = Number((event.target as HTMLSelectElement).value)
+  await handleSwitchSpaceId(value)
+}
+
+async function handleSwitchSpaceId(value: number) {
   if (!Number.isInteger(value) || value <= 0 || value === currentSpaceId.value) return
   try {
     await switchSpace(value)
@@ -1064,6 +1125,16 @@ async function handleSwitchSpace(event: Event) {
   } catch (err) {
     message.error((err as Error).message)
   }
+}
+
+function openArchive() {
+  showUserMenu.value = false
+  void router.push('/archive')
+}
+
+function openTrash() {
+  showUserMenu.value = false
+  void router.push({ path: '/settings', query: { tab: 'trash' } })
 }
 
 function handleMenuItem(key: string) {
@@ -1247,21 +1318,6 @@ async function logout() {
   color: #37352f;
   letter-spacing: 0;
 }
-.space-switcher {
-  padding: 0 12px 12px;
-  border-bottom: 1px solid #ececea;
-}
-.space-select {
-  width: 100%;
-  height: 30px;
-  border: 1px solid #e3e3df;
-  border-radius: 8px;
-  background: #fff;
-  color: #37352f;
-  font-size: 13px;
-  padding: 0 8px;
-  outline: none;
-}
 .ai-launch {
   margin-left: auto;
   display: inline-flex;
@@ -1325,6 +1381,55 @@ async function logout() {
 /* ── Tables panel ──────────────────────────────────────────── */
 .table-list {
   padding: 8px 0;
+}
+.space-tree {
+  padding: 4px 0 8px;
+}
+.space-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: calc(100% - 12px);
+  min-height: 30px;
+  margin: 1px 6px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #787774;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.space-tree-row:hover {
+  background: rgba(55, 53, 47, 0.06);
+  color: #37352f;
+}
+.space-tree-row.active {
+  color: #37352f;
+  font-weight: 650;
+}
+.space-tree-arrow {
+  width: 12px;
+  flex-shrink: 0;
+  color: #a3a19d;
+  font-size: 14px;
+  line-height: 1;
+}
+.space-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.space-tree-panel .table-list {
+  padding-top: 0;
+}
+.space-divider {
+  height: 1px;
+  margin: 6px 16px;
+  background: #e2e2df;
 }
 .group-header {
   display: flex;
@@ -1493,23 +1598,35 @@ async function logout() {
   color: #a3a19d;
 }
 
-.kb-entry {
+.sidebar-utilities {
+  padding: 7px 8px;
+  border-bottom: 1px solid #e9e9e7;
+}
+.utility-entry {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font: inherit;
   font-size: 13px;
   color: #787774;
   cursor: pointer;
-  border-top: 1px solid #e9e9e7;
   transition: background 0.12s, color 0.12s;
-  flex-shrink: 0;
+  text-align: left;
 }
-.kb-entry:hover {
+.utility-entry + .utility-entry {
+  margin-top: 2px;
+}
+.utility-entry:hover {
   background: #f1f1ef;
   color: #37352f;
 }
-.kb-entry.active {
+.utility-entry.active {
   color: #37352f;
   background: #f1f1ef;
 }

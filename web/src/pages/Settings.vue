@@ -4,7 +4,7 @@
       <h2 class="settings-title">设置</h2>
     </div>
 
-    <n-tabs type="line" animated>
+    <n-tabs v-model:value="activeTab" type="line" animated @update:value="handleTabUpdate">
       <n-tab-pane name="account" tab="账号">
         <div class="tab-content">
           <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 12px;">修改密码</div>
@@ -514,9 +514,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { useRouter } from 'vue-router'
+  import { ref, computed, watch } from 'vue'
+  import { useQuery, useQueryClient } from '@tanstack/vue-query'
+  import { useRoute, useRouter } from 'vue-router'
 import {
   NTabs, NTabPane, NForm, NFormItem, NInput, NButton, NText, NTag, NSpace,
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
@@ -531,6 +531,23 @@ const message = useMessage()
 const dialog = useDialog()
 const queryClient = useQueryClient()
 const router = useRouter()
+const route = useRoute()
+
+const settingsTabs = ['account', 'files', 'keys', 'trash', 'import-export', 'team', 'appearance'] as const
+type SettingsTab = typeof settingsTabs[number]
+function normalizeTab(value: unknown): SettingsTab {
+  return settingsTabs.includes(value as SettingsTab) ? value as SettingsTab : 'account'
+}
+const activeTab = ref<SettingsTab>(normalizeTab(route.query.tab))
+
+watch(() => route.query.tab, (tab) => {
+  activeTab.value = normalizeTab(tab)
+})
+
+function handleTabUpdate(tab: string) {
+  if (tab === normalizeTab(route.query.tab)) return
+  void router.replace({ path: '/settings', query: tab === 'account' ? {} : { tab } })
+}
 
 // ── Current User ─────────────────────────────────────────────
 const currentUserId = ref<number>()
