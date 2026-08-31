@@ -114,11 +114,12 @@ function openApiSpec(serverUrl: string) {
     openapi: '3.0.0',
     info: {
       title: '墨问 MoWen API',
-      version: '2.1.0',
+      version: '2.2.0',
       description: `墨问 HTTP API。鉴权：\`X-API-Key\`。
 
 表格用 \`name\`（如 tbl_abc123），显示名是 \`title\`；写记录用字段 \`column_name\`。
 文件夹权限：\`scope=groups\` 的 Key 可访问所选文件夹里的表格和笔记。工作区树见 \`/api/workspace/*\`。
+Web 登录态支持一个账号加入多个空间；API Key 归属创建它的空间和授权范围，适合小程序和 Skill 直接访问。
 分页用游标 \`cursor\` / \`next_cursor\`。时间是 UTC ISO 8601。
 
 Skill：\`/agent/mowen/SKILL.md\``,
@@ -160,6 +161,52 @@ Skill：\`/agent/mowen/SKILL.md\``,
             page_size: { type: 'integer' },
             count: { type: 'integer', description: 'Number of records returned on this page' },
             next_cursor: { type: 'string', nullable: true, description: 'Cursor for the next page; null means this is the last page' },
+          },
+        },
+        SpaceSummary: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer' },
+            name: { type: 'string' },
+            role: { type: 'string', enum: ['owner', 'admin', 'member', 'viewer'] },
+          },
+        },
+        SessionUser: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer' },
+            email: { type: 'string' },
+            name: { type: 'string' },
+            picture: { type: 'string' },
+            role: { type: 'string' },
+            team: {
+              type: 'object',
+              nullable: true,
+              deprecated: true,
+              description: 'Legacy alias of current_team for old clients.',
+              properties: {
+                id: { type: 'integer' },
+                name: { type: 'string' },
+              },
+            },
+            current_team: { allOf: [{ $ref: '#/components/schemas/SpaceSummary' }], nullable: true },
+            spaces: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/SpaceSummary' },
+            },
+          },
+        },
+        TeamInvite: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer' },
+            code: { type: 'string' },
+            role: { type: 'string' },
+            max_uses: { type: 'integer', nullable: true },
+            used_count: { type: 'integer' },
+            expires_at: { type: 'integer', nullable: true },
+            revoked_at: { type: 'integer', nullable: true },
+            created_at: { type: 'integer' },
           },
         },
       },
@@ -1589,6 +1636,54 @@ Skill：\`/agent/mowen/SKILL.md\``,
           },
         },
       },
+      '/api/teams': {
+        get: {
+          summary: 'List spaces for current signed-in user',
+          security: [],
+          responses: {
+            '200': {
+              description: 'Visible spaces for the current session user',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/SpaceSummary' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Not authenticated' },
+          },
+        },
+        post: {
+          summary: 'Create a new space and switch to it',
+          security: [],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Space created and selected' },
+            '400': { description: 'Invalid body' },
+            '401': { description: 'Not authenticated' },
+          },
+        },
+      },
       '/api/teams/current/members': {
         post: {
           summary: 'Add team member',
@@ -1614,6 +1709,95 @@ Skill：\`/agent/mowen/SKILL.md\``,
           },
         },
       },
+      '/api/teams/current/members/{userId}/invite': {
+        post: {
+          summary: 'Resend invite email to a current space member',
+          security: [],
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Invite email sent' },
+            '400': { description: 'No team' },
+            '403': { description: 'Owner access required' },
+            '404': { description: 'Member not found' },
+            '502': { description: 'Mail provider failed' },
+          },
+        },
+      },
+      '/api/teams/current/invites': {
+        get: {
+          summary: 'List invite codes for current space',
+          security: [],
+          responses: {
+            '200': {
+              description: 'Current space invite codes',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/TeamInvite' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'No team' },
+            '403': { description: 'Owner access required' },
+          },
+        },
+        post: {
+          summary: 'Create an invite code for current space',
+          security: [],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    role: { type: 'string', enum: ['admin', 'member', 'viewer'], default: 'member' },
+                    max_uses: { type: 'integer', nullable: true },
+                    expires_in_days: { type: 'integer', nullable: true },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Invite code created',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: { $ref: '#/components/schemas/TeamInvite' },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'No team / invalid body' },
+            '403': { description: 'Owner access required' },
+          },
+        },
+      },
+      '/api/teams/current/invites/{id}': {
+        delete: {
+          summary: 'Revoke an invite code',
+          security: [],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Invite revoked' },
+            '400': { description: 'No team' },
+            '403': { description: 'Owner access required' },
+            '404': { description: 'Invite not found' },
+          },
+        },
+      },
       '/api/teams/current/members/{userId}': {
         delete: {
           summary: 'Remove team member',
@@ -1628,10 +1812,76 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/auth/me': {
         get: {
           summary: 'Get current signed-in user',
+          description: 'Returns the signed-in user, the active space, and every space the account belongs to. The legacy team field mirrors current_team for older clients.',
           security: [],
           responses: {
-            '200': { description: 'Current session user' },
+            '200': {
+              description: 'Current session user',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: { $ref: '#/components/schemas/SessionUser' },
+                    },
+                  },
+                },
+              },
+            },
             '401': { description: 'Not authenticated' },
+          },
+        },
+      },
+      '/api/auth/switch-space': {
+        post: {
+          summary: 'Switch active space for current signed-in user',
+          security: [],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['team_id'],
+                  properties: {
+                    team_id: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Active space switched' },
+            '400': { description: 'Invalid body' },
+            '401': { description: 'Not authenticated' },
+            '403': { description: 'User is not a member of this space' },
+          },
+        },
+      },
+      '/api/auth/join': {
+        post: {
+          summary: 'Join a space with an invite code',
+          security: [],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['invite_code'],
+                  properties: {
+                    invite_code: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Joined and switched to invited space' },
+            '400': { description: 'Invalid invite code or request body' },
+            '401': { description: 'Not authenticated' },
+            '403': { description: 'Invite cannot be used' },
+            '409': { description: 'Already a member' },
           },
         },
       },
@@ -1662,11 +1912,30 @@ Skill：\`/agent/mowen/SKILL.md\``,
       },
       '/api/auth/register': {
         post: {
-          summary: 'Register the first admin (or public register if enabled)',
+          summary: 'Register the first admin, public user, or invite-code user',
+          description: 'When invite_code is present, a new account joins the invited space even if public registration is closed.',
           security: [],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email', 'password'],
+                  properties: {
+                    email: { type: 'string' },
+                    password: { type: 'string', minLength: 8 },
+                    name: { type: 'string' },
+                    invite_code: { type: 'string', description: 'Optional code created by a space owner' },
+                  },
+                },
+              },
+            },
+          },
           responses: {
             '201': { description: 'Registered and signed in' },
             '403': { description: 'Registration is closed' },
+            '409': { description: 'Email already registered' },
           },
         },
       },

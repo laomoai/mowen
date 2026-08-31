@@ -68,6 +68,7 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="mowen", description="墨问 agent CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    sub.add_parser("whoami", help="确认当前 Key 的用户、空间、权限范围和可见工作区")
     sub.add_parser("tables", help="列出表格")
     s = sub.add_parser("schema", help="表结构")
     s.add_argument("--table", required=True)
@@ -115,7 +116,9 @@ def main() -> None:
     args = p.parse_args()
     c = args.cmd
 
-    if c == "tables":
+    if c == "whoami":
+        dumps(request("GET", "/api/viewer/me"))
+    elif c == "tables":
         dumps(request("GET", "/api/tables"))
     elif c == "schema":
         dumps(request("GET", f"/api/tables/{args.table}"))

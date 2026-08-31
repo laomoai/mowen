@@ -9,6 +9,7 @@ const URL_BASE = (process.env.MOWEN_URL || "https://mowen.lemoai.cn").replace(/\
 const API_KEY = (process.env.MOWEN_KEY || "").trim();
 
 const TOOLS = [
+  { name: "viewer_me", description: "确认当前 API Key 的用户、空间、权限范围和可见工作区", inputSchema: { type: "object", properties: {} } },
   { name: "list_tables", description: "列出当前 Key 可见的表格", inputSchema: { type: "object", properties: {} } },
   {
     name: "get_schema",
@@ -122,6 +123,8 @@ async function api(method, path, body) {
 
 async function callTool(name, args = {}) {
   switch (name) {
+    case "viewer_me":
+      return api("GET", "/api/viewer/me");
     case "list_tables":
       return api("GET", "/api/tables");
     case "get_schema":
