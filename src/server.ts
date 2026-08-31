@@ -27,7 +27,7 @@ loadDotEnv()
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const dataDir = process.env.DATA_DIR || path.join(rootDir, 'data')
-const sqlitePath = process.env.SQLITE_PATH || path.join(dataDir, 'd1table.sqlite')
+const sqlitePath = process.env.SQLITE_PATH || path.join(dataDir, 'mowen.sqlite')
 const filesDir = path.join(dataDir, 'files')
 const publicDir = path.join(rootDir, 'public')
 const listenHost = process.env.LISTEN_HOST || '127.0.0.1'
@@ -56,6 +56,7 @@ const env: Env = {
 }
 
 const executionCtx = {
+  props: {},
   waitUntil(promise: Promise<unknown>) {
     void promise.catch((err) => console.error('[waitUntil]', err))
   },
@@ -81,5 +82,5 @@ const nodeApp = {
 }
 
 serve({ fetch: nodeApp.fetch, hostname: listenHost, port: listenPort }, (info) => {
-  console.log(`D1Table listening on http://${info.address}:${info.port}`)
+  console.log(`MoWen listening on http://${info.address}:${info.port}`)
 })

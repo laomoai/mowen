@@ -1,5 +1,5 @@
 import { sha256 } from './crypto'
-import type { D1PreparedStatement } from '../db/sqlite'
+import type { AppPreparedStatement } from '../db/sqlite'
 import { generateToken } from './password'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -16,7 +16,7 @@ export function isValidEmail(email: string): boolean {
   return EMAIL_RE.test(email)
 }
 
-export async function listUserSpaces(db: D1Database, userId: number): Promise<UserSpace[]> {
+export async function listUserSpaces(db: AppDatabase, userId: number): Promise<UserSpace[]> {
   const rows = await db.prepare(
     `SELECT t.id, t.name, tm.role, t.created_by
      FROM _team_members tm
@@ -33,7 +33,7 @@ export async function listUserSpaces(db: D1Database, userId: number): Promise<Us
 }
 
 export async function getActiveTeamForUser(
-  db: D1Database,
+  db: AppDatabase,
   userId: number,
   currentTeamId: number | null | undefined,
 ): Promise<UserSpace | null> {
@@ -47,7 +47,7 @@ export async function getActiveTeamForUser(
   return picked
 }
 
-export async function setActiveTeam(db: D1Database, userId: number, teamId: number): Promise<UserSpace> {
+export async function setActiveTeam(db: AppDatabase, userId: number, teamId: number): Promise<UserSpace> {
   const row = await db.prepare(
     `SELECT t.id, t.name, tm.role, t.created_by
      FROM _team_members tm
@@ -66,7 +66,7 @@ export async function setActiveTeam(db: D1Database, userId: number, teamId: numb
 }
 
 export async function assertTeamMember(
-  db: D1Database,
+  db: AppDatabase,
   userId: number,
   teamId: number,
 ): Promise<{ role: SpaceRole } | null> {
@@ -77,7 +77,7 @@ export async function assertTeamMember(
 }
 
 export async function addTeamMember(
-  db: D1Database,
+  db: AppDatabase,
   opts: { teamId: number; userId: number; role?: SpaceRole; invitedBy?: number | null },
 ): Promise<void> {
   await db.prepare(
@@ -100,7 +100,7 @@ export async function addTeamMember(
 }
 
 export async function removeTeamMember(
-  db: D1Database,
+  db: AppDatabase,
   opts: { teamId: number; userId: number },
 ): Promise<void> {
   const team = await db.prepare(
@@ -129,7 +129,7 @@ export async function removeTeamMember(
 }
 
 export async function createInvite(
-  db: D1Database,
+  db: AppDatabase,
   opts: { teamId: number; role?: SpaceRole; maxUses?: number | null; expiresAt?: number | null; createdBy?: number | null },
 ): Promise<{ id: number; code: string; expires_at: number | null; max_uses: number | null; role: SpaceRole }> {
   const code = `mw-invite-${generateToken(12)}`
@@ -148,7 +148,7 @@ export async function createInvite(
   }
 }
 
-export async function listTeamInvites(db: D1Database, teamId: number) {
+export async function listTeamInvites(db: AppDatabase, teamId: number) {
   const rows = await db.prepare(
     `SELECT id, role, max_uses, used_count, expires_at, created_at, revoked_at
      FROM _team_invites
@@ -166,7 +166,7 @@ export async function listTeamInvites(db: D1Database, teamId: number) {
   return rows.results.map((row) => ({ ...row, role: normalizeRole(row.role) }))
 }
 
-export async function revokeInvite(db: D1Database, teamId: number, inviteId: number): Promise<boolean> {
+export async function revokeInvite(db: AppDatabase, teamId: number, inviteId: number): Promise<boolean> {
   const result = await db.prepare(
     `UPDATE _team_invites SET revoked_at = unixepoch() WHERE id = ? AND team_id = ? AND revoked_at IS NULL`,
   ).bind(inviteId, teamId).run()
@@ -174,7 +174,7 @@ export async function revokeInvite(db: D1Database, teamId: number, inviteId: num
 }
 
 export async function redeemInvite(
-  db: D1Database,
+  db: AppDatabase,
   code: string,
   userId: number,
 ): Promise<UserSpace> {
@@ -231,7 +231,7 @@ function normalizeRole(role: string | null | undefined): SpaceRole {
  * Hard-delete a team member: nullify their ownership references, then remove user record.
  * Resources (notes, groups, etc.) remain in the Space (team_id unchanged), only personal ownership is cleared.
  */
-export async function hardDeleteMember(db: D1Database, userId: number) {
+export async function hardDeleteMember(db: AppDatabase, userId: number) {
   await db.batch([
     db.prepare(`DELETE FROM _team_members WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM _password_resets WHERE user_id = ?`).bind(userId),
@@ -257,7 +257,7 @@ export async function hardDeleteMember(db: D1Database, userId: number) {
  *   _group_tables → _groups
  *   _teams.created_by → _users  (must nullify before deleting the team)
  */
-export async function hardDeleteSpace(db: D1Database, teamId: number) {
+export async function hardDeleteSpace(db: AppDatabase, teamId: number) {
   const [users, tables] = await Promise.all([
     db.prepare(`SELECT user_id AS id FROM _team_members WHERE team_id = ?`).bind(teamId).all<{ id: number }>(),
     db.prepare(`SELECT table_name FROM _meta WHERE team_id = ?`).bind(teamId).all<{ table_name: string }>(),
@@ -275,7 +275,7 @@ export async function hardDeleteSpace(db: D1Database, teamId: number) {
   ])
 
   // Step 3: Move users whose current space is being deleted to another membership.
-  const userStmts: D1PreparedStatement[] = [
+  const userStmts: AppPreparedStatement[] = [
     db.prepare(`DELETE FROM _team_members WHERE team_id = ?`).bind(teamId),
   ]
   for (const u of users.results) {

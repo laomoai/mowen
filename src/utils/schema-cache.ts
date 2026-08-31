@@ -2,10 +2,10 @@ import type { ColumnInfo } from '../types'
 
 /**
  * 从 sqlite_master 获取所有用户表名（排除 _ 开头的系统表）
- * 注意：D1 查询是 I/O，不计入 CPU time，但计入行读取。
+ * 注意：schema 查询会访问 SQLite 系统表，调用方应避免在热路径重复执行。
  * sqlite_master 通常行数极少（几十行），成本可忽略。
  */
-export async function getUserTables(db: D1Database): Promise<string[]> {
+export async function getUserTables(db: AppDatabase): Promise<string[]> {
   const result = await db
     .prepare(
       `SELECT name FROM sqlite_master WHERE type='table' ORDER BY rowid`
@@ -27,7 +27,7 @@ export async function getUserTables(db: D1Database): Promise<string[]> {
  * 每次调用读取很少行（列数），成本极低
  */
 export async function getTableColumns(
-  db: D1Database,
+  db: AppDatabase,
   tableName: string
 ): Promise<ColumnInfo[]> {
   const result = await db
@@ -41,7 +41,7 @@ export async function getTableColumns(
  * 防止访问系统表或不存在的表
  */
 export async function validateTableName(
-  db: D1Database,
+  db: AppDatabase,
   tableName: string
 ): Promise<boolean> {
   if (!isValidIdentifier(tableName)) return false

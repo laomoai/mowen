@@ -213,7 +213,7 @@ registerClipboardToast((content, opts) => message.success(content, opts))
 const router = useRouter()
 const route = useRoute()
 const queryClient = useQueryClient()
-const RECENT_KEY = 'd1table_recent_access'
+const RECENT_KEY = 'mowen_recent_access'
 
 const workspaceSearch = ref('')
 const showAddMenu = ref(false)
@@ -225,7 +225,7 @@ const folderModalInitial = ref('')
 const renameTargetId = ref<string | null>(null)
 const createTargetFolder = ref<string | null>(null)
 const wsDropState = ref<{ id: string | null; position: 'above' | 'child' | null }>({ id: null, position: null })
-const EXPANDED_WS_KEY = 'd1table_expanded_workspace'
+const EXPANDED_WS_KEY = 'mowen_expanded_workspace'
 const expandedWorkspace = reactive(new Set<string>(
   JSON.parse(localStorage.getItem(EXPANDED_WS_KEY) ?? '[]') as string[],
 ))
@@ -509,7 +509,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', onGlobalPointerDow
 watch(() => route.path, () => { showAddMenu.value = false })
 
 // ── Sidebar resize ──────────────────────────────────────────────
-const SIDEBAR_WIDTH_KEY = 'd1table_sidebar_width'
+const SIDEBAR_WIDTH_KEY = 'mowen_sidebar_width'
 const sidebarWidth = ref(parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '220'))
 const isResizing = ref(false)
 
@@ -532,7 +532,7 @@ function startResize(e: MouseEvent) {
 }
 
 // ── Sidebar tab ─────────────────────────────────────────────────
-const SIDEBAR_TAB_KEY = 'd1table_sidebar_tab'
+const SIDEBAR_TAB_KEY = 'mowen_sidebar_tab'
 const sidebarTab = ref<'tables' | 'notes'>(
   route.path.startsWith('/notes') ? 'notes'
     : route.path.startsWith('/tables') ? 'tables'
@@ -564,7 +564,7 @@ const activeTable = computed(() => {
 })
 
 // ── Group collapse（持久化到 localStorage）──────────────────────────
-const EXPANDED_GROUPS_KEY = 'd1table_expanded_groups'
+const EXPANDED_GROUPS_KEY = 'mowen_expanded_groups'
 
 function loadExpandedGroups(): Set<number> {
   try {
@@ -589,7 +589,7 @@ onMounted(async () => {
     const prefs = await api.getPreferences()
     if (Array.isArray(prefs.table_order) && (prefs.table_order as string[]).length > 0) {
       tableOrder.value = prefs.table_order as string[]
-      localStorage.setItem('d1table_table_order', JSON.stringify(prefs.table_order))
+      localStorage.setItem('mowen_table_order', JSON.stringify(prefs.table_order))
     }
     if (Array.isArray(prefs.expanded_groups)) {
       expandedGroups.clear()
@@ -598,7 +598,7 @@ onMounted(async () => {
     }
     if (Array.isArray(prefs.group_order) && (prefs.group_order as number[]).length > 0) {
       groupOrder.value = prefs.group_order as number[]
-      localStorage.setItem('d1table_group_order', JSON.stringify(prefs.group_order))
+      localStorage.setItem('mowen_group_order', JSON.stringify(prefs.group_order))
     }
   } catch { /* fallback to localStorage values already loaded */ }
 })
@@ -612,7 +612,7 @@ function toggleGroup(id: number) {
 
 // ── 分组排序 ────────────────────────────────────────────────────
 const groupOrder = ref<number[]>(
-  JSON.parse(localStorage.getItem('d1table_group_order') ?? 'null') ?? []
+  JSON.parse(localStorage.getItem('mowen_group_order') ?? 'null') ?? []
 )
 
 const draggedGroupId = ref<number | null>(null)
@@ -639,7 +639,7 @@ function onGroupDrop(e: DragEvent, targetId: number) {
   currentOrder.splice(to, 0, draggedGroupId.value)
 
   groupOrder.value = currentOrder
-  localStorage.setItem('d1table_group_order', JSON.stringify(currentOrder))
+  localStorage.setItem('mowen_group_order', JSON.stringify(currentOrder))
   draggedGroupId.value = null
   savePreferencesToServer()
 }
@@ -730,7 +730,7 @@ async function saveTableTitle(table: TableMeta) {
 
 // ── 拖拽排序 ────────────────────────────────────────────────────────
 const tableOrder = ref<string[]>(
-  JSON.parse(localStorage.getItem('d1table_table_order') ?? 'null') ?? []
+  JSON.parse(localStorage.getItem('mowen_table_order') ?? 'null') ?? []
 )
 
 function sortedTables(list: TableMeta[]) {
@@ -774,7 +774,7 @@ function onDrop(e: DragEvent, targetName: string) {
   order.splice(to, 0, draggedTable.value)
 
   tableOrder.value = order
-  localStorage.setItem('d1table_table_order', JSON.stringify(order))
+  localStorage.setItem('mowen_table_order', JSON.stringify(order))
   draggedTable.value = null
   savePreferencesToServer()
 }
@@ -784,7 +784,7 @@ function onDragEnd() {
 }
 
 // ── 侧边栏外观偏好 ────────────────────────────────────────
-const SIDEBAR_PREFS_KEY = 'd1table_sidebar_prefs'
+const SIDEBAR_PREFS_KEY = 'mowen_sidebar_prefs'
 
 function loadSidebarPrefs() {
   try {
@@ -844,7 +844,7 @@ const noteChildrenMap = computed(() => {
 })
 
 // Notes expanded folders persistence
-const NOTE_EXPANDED_KEY = 'd1table_note_expanded'
+const NOTE_EXPANDED_KEY = 'mowen_note_expanded'
 function loadNoteExpanded(): Set<string> {
   try {
     const raw = localStorage.getItem(NOTE_EXPANDED_KEY)

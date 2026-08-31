@@ -1,4 +1,4 @@
-/** SHA-256 哈希，返回十六进制字符串（Workers 内置 Web Crypto API） */
+/** SHA-256 哈希，返回十六进制字符串。 */
 export async function sha256(text: string): Promise<string> {
   const data = new TextEncoder().encode(text)
   const hashBuf = await crypto.subtle.digest('SHA-256', data)

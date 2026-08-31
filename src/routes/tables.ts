@@ -50,14 +50,8 @@ const tables = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 /**
  * GET /api/tables
  * 获取所有用户表列表
- *
- * D1 成本：读取 sqlite_master（行数极少，<20行），成本可忽略
- * 已通过 cacheMiddleware 缓存 60 秒
  */
 tables.get('/', async (c) => {
-  // 清除旧版 cacheMiddleware 残留的 Cache API 条目
-  try { await caches.default.delete(c.req.raw) } catch {}
-
   let tableNames = await getUserTables(c.env.DB)
 
   // scope=groups 时只返回允许的表
@@ -158,11 +152,8 @@ tables.post('/:tableName/unarchive', requireWriteMiddleware, async (c) => {
 /**
  * GET /api/tables/:tableName
  * 获取指定表的字段结构
- *
- * D1 成本：PRAGMA table_info 只读该表列数行（通常 <20行）
  */
 tables.get('/:tableName', async (c) => {
-  try { await caches.default.delete(c.req.raw) } catch {}
   const { tableName } = c.req.param()
 
   const allTables = await getUserTables(c.env.DB)
@@ -316,7 +307,7 @@ tables.post('/', requireWriteMiddleware, async (c) => {
 
   // scope=groups 的 key 创建表时，自动加入该 key 有权限的分组
   const groupIds = c.get('allowedGroupIds')
-  const groupStmts: D1PreparedStatement[] = []
+  const groupStmts: AppPreparedStatement[] = []
   if (groupIds && groupIds.length > 0) {
     for (const gid of groupIds) {
       groupStmts.push(

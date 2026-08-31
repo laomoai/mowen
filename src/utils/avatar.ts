@@ -9,7 +9,7 @@ const BACKGROUNDS = [
 /** Deterministic colorful avatar (DiceBear Adventurer) for email/password users. */
 export function avatarSvg(seed: string): string {
   return createAvatar(adventurer, {
-    seed: seed.trim().toLowerCase() || 'd1table',
+    seed: seed.trim().toLowerCase() || 'mowen',
     size: 128,
     backgroundType: ['solid'],
     backgroundColor: BACKGROUNDS,

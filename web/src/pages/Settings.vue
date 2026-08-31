@@ -782,7 +782,7 @@ async function handleExportNotesBundle() {
     }))
 
     downloadJson(buildExportFilename('notes_bundle'), {
-      kind: 'd1table-notes-export',
+      kind: 'mowen-notes-export',
       version: 1,
       exported_at: new Date().toISOString(),
       count: fullNotes.length,
@@ -829,7 +829,7 @@ async function handleExportTablesBundle() {
     }))
 
     downloadJson(buildExportFilename('tables_bundle'), {
-      kind: 'd1table-tables-export',
+      kind: 'mowen-tables-export',
       version: 1,
       exported_at: new Date().toISOString(),
       count: tablePayloads.length,
@@ -1002,7 +1002,7 @@ async function handleEmptyTrash() {
 }
 
 // ── Sidebar Appearance ────────────────────────────────────
-const SIDEBAR_PREFS_KEY = 'd1table_sidebar_prefs'
+const SIDEBAR_PREFS_KEY = 'mowen_sidebar_prefs'
 
 function loadSidebarPrefs() {
   try {

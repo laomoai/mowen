@@ -32,7 +32,7 @@ function inferFieldType(colName: string, sqliteType: string): string {
 }
 
 // 确保 _field_meta 存在（懒初始化，支持通过其他方式创建的表）
-async function ensureFieldMeta(db: D1Database, tableName: string) {
+async function ensureFieldMeta(db: AppDatabase, tableName: string) {
   const cols = await db.prepare(`PRAGMA table_info("${tableName}")`).all<{
     cid: number; name: string; type: string; notnull: number; dflt_value: string | null; pk: number
   }>()
@@ -68,11 +68,11 @@ async function ensureFieldMeta(db: D1Database, tableName: string) {
   return getMergedFields(db, tableName, cols)
 }
 
-type PragmaResult = D1Result<{
+type PragmaResult = QueryResult<{
   cid: number; name: string; type: string; notnull: number; dflt_value: string | null; pk: number
 }>
 
-async function getMergedFields(db: D1Database, tableName: string, existingPragma?: PragmaResult) {
+async function getMergedFields(db: AppDatabase, tableName: string, existingPragma?: PragmaResult) {
   const [pragma, meta] = await Promise.all([
     existingPragma ?? db.prepare(`PRAGMA table_info("${tableName}")`).all<{
       cid: number; name: string; type: string; notnull: number; dflt_value: string | null; pk: number
@@ -191,7 +191,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
   params.push(tableName, colName)
 
   // 构建批量语句：meta 更新 + 数据行值迁移放进同一个 batch 保证原子性
-  const stmts: D1PreparedStatement[] = []
+  const stmts: AppPreparedStatement[] = []
 
   stmts.push(
     c.env.DB.prepare(
@@ -314,7 +314,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   }
 
   try {
-    const batchStmts: D1PreparedStatement[] = [
+    const batchStmts: AppPreparedStatement[] = [
       c.env.DB.prepare(alterSQL),
       c.env.DB.prepare(
         `INSERT INTO _field_meta (table_name, column_name, title, field_type, select_options, order_index, width)
@@ -379,7 +379,7 @@ fields.delete('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =
  * 只读版字段元数据查询：单次查询，不做懒初始化
  * 在读路径（GET /records）使用，避免 ensureFieldMeta 的额外 PRAGMA + INSERT 开销
  */
-export async function getFieldMeta(db: D1Database, tableName: string): Promise<Array<{
+export async function getFieldMeta(db: AppDatabase, tableName: string): Promise<Array<{
   column_name: string; title: string; field_type: string; select_options: unknown[] | null
 }>> {
   const rows = await db.prepare(

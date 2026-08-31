@@ -12,7 +12,7 @@ function generateId(): string {
 
 /** BFS collect descendants with access control and breadth cap */
 async function collectDescendants(
-  db: D1Database,
+  db: AppDatabase,
   rootId: string,
   teamId: number | undefined,
   allowedNoteIds: Set<string> | null,
@@ -424,7 +424,7 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     params.push(body.title.trim() || 'Untitled')
   }
   if (body.content !== undefined) {
-    const MAX_CONTENT = 1024 * 1024 // 1MB — D1 row size limit
+    const MAX_CONTENT = 1024 * 1024 // 1MB content safety limit
     if (body.content.length > MAX_CONTENT) {
       return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 1MB limit' } }, 413)
     }

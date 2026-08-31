@@ -33,8 +33,8 @@ export interface LinkValue {
 }
 
 export interface ImageValue {
-  thumb: string    // R2 key，如 images/uuid/thumb.webp
-  display: string  // R2 key，如 images/uuid/display.webp
+  thumb: string    // storage key，如 images/uuid/thumb.webp
+  display: string  // storage key，如 images/uuid/display.webp
   name: string     // 原始文件名
   size: number     // display 文件大小（字节）
 }

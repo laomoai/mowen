@@ -801,7 +801,7 @@ assistant.post('/chat', async (c) => {
             table_name: args.table_name,
             note_id: args.note_id,
             folder: args.folder as string | undefined,
-            folder_id: args.folder_id,
+            folder_id: args.folder_id != null ? String(args.folder_id) : undefined,
           }, ctx)
           mutated = true
         } else if (call.function.name === 'propose_table') {

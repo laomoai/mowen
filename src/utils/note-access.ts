@@ -1,5 +1,5 @@
 export async function getAccessibleNoteIds(
-  db: D1Database,
+  db: AppDatabase,
   teamId: number | undefined,
   allowedNoteRootIds: string[] | null,
 ): Promise<Set<string> | null> {

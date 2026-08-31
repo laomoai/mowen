@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import type { SqliteDatabase } from '../db/sqlite'
+import type { AppDatabase } from '../db/sqlite'
 import { getAccessibleNoteIds, canAccessNote } from './note-access'
 
 export type FileRefKind = 'table' | 'note' | 'none'
@@ -20,7 +20,7 @@ export function normalizeStorageKey(raw: string): string | null {
 }
 
 export async function registerFile(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: {
     storageKey: string
     ownerId?: number | null
@@ -41,11 +41,11 @@ export async function registerFile(
   ).run()
 }
 
-export async function unregisterFile(db: SqliteDatabase, key: string): Promise<void> {
+export async function unregisterFile(db: AppDatabase, key: string): Promise<void> {
   await db.prepare(`DELETE FROM _files WHERE storage_key = ?`).bind(key).run()
 }
 
-export async function collectReferencedKeys(db: SqliteDatabase, teamId?: number): Promise<Set<string>> {
+export async function collectReferencedKeys(db: AppDatabase, teamId?: number): Promise<Set<string>> {
   const used = new Set<string>()
   const noteSql = teamId !== undefined
     ? `SELECT content FROM _notes WHERE deleted_at IS NULL AND team_id = ?`
@@ -86,7 +86,7 @@ export async function collectReferencedKeys(db: SqliteDatabase, teamId?: number)
 }
 
 export async function listOrphanFiles(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: { teamId?: number; olderThanSec?: number },
 ): Promise<FileMeta[]> {
   const used = await collectReferencedKeys(db, opts.teamId)
@@ -105,7 +105,7 @@ export async function listOrphanFiles(
   })
 }
 
-export async function getFileMeta(db: SqliteDatabase, key: string): Promise<FileMeta | null> {
+export async function getFileMeta(db: AppDatabase, key: string): Promise<FileMeta | null> {
   return db.prepare(
     `SELECT storage_key, owner_id, team_id, ref_kind, ref_id FROM _files WHERE storage_key = ?`,
   ).bind(key).first<FileMeta>()
@@ -128,7 +128,7 @@ export function verifyFileSig(secret: string, key: string, expRaw: string, sig: 
 }
 
 export async function canReadStoredFile(
-  db: SqliteDatabase,
+  db: AppDatabase,
   meta: FileMeta | null,
   access: {
     userId?: number

@@ -4,6 +4,6 @@
 DROP INDEX IF EXISTS idx_notes_table;
 DROP INDEX IF EXISTS idx_notes_row;
 -- SQLite does not support DROP COLUMN before 3.35.0
--- Cloudflare D1 uses a recent SQLite version that supports it
+-- Modern SQLite supports this cleanup pattern
 ALTER TABLE _notes DROP COLUMN table_name;
 ALTER TABLE _notes DROP COLUMN row_id;

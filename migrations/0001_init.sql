@@ -1,4 +1,4 @@
--- D1Table 初始化迁移
+-- MoWen 初始化迁移
 -- 执行：npm run db:migrate:local（本地）或 npm run db:migrate（生产）
 
 -- API Key 表
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
--- 为常用筛选字段建索引，避免全表扫描（直接影响 D1 行读取成本）
+-- 为常用筛选字段建索引，避免 SQLite 全表扫描
 CREATE INDEX IF NOT EXISTS idx_contacts_name    ON contacts(name);
 CREATE INDEX IF NOT EXISTS idx_contacts_company ON contacts(company);
 CREATE INDEX IF NOT EXISTS idx_contacts_email   ON contacts(email);

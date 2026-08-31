@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "dev:web": "cd web && npm run dev",
     "start": "tsx src/server.ts",
-    "build:web": "cd web && npm run build && mkdir -p ../public/agent && rm -rf ../public/agent/mowen ../public/agent/d1table ../public/agent/mowen.zip && cp -R ../agent/mowen ../public/agent/mowen && (cd ../agent && zip -qr ../public/agent/mowen.zip mowen)",
+    "build:web": "cd web && npm run build && node -e \"const fs=require('fs');const p='../public/agent';fs.mkdirSync(p,{recursive:true});for(const e of fs.readdirSync(p))fs.rmSync(p+'/'+e,{recursive:true,force:true})\" && cp -R ../agent/mowen ../public/agent/mowen && (cd ../agent && zip -qr ../public/agent/mowen.zip mowen)",
     "db:migrate": "tsx scripts/migrate.ts",
     "smoke:viewer": "tsx scripts/smoke-viewer.ts",
     "smoke:multi-space": "tsx scripts/smoke-multi-space.ts"

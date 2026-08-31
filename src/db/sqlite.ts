@@ -2,30 +2,30 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 
-export type D1Meta = {
+export type QueryMeta = {
   changes: number
   last_row_id: number
   duration: number
 }
 
-export type D1Result<T = unknown> = {
+export type QueryResult<T = unknown> = {
   success: boolean
   results: T[]
-  meta: D1Meta
+  meta: QueryMeta
 }
 
-export type D1PreparedStatement = {
-  bind: (...values: unknown[]) => D1PreparedStatement
+export type AppPreparedStatement = {
+  bind: (...values: unknown[]) => AppPreparedStatement
   first: <T = unknown>(colName?: string) => Promise<T | null>
-  all: <T = unknown>() => Promise<D1Result<T>>
-  run: <T = unknown>() => Promise<D1Result<T>>
+  all: <T = unknown>() => Promise<QueryResult<T>>
+  run: <T = unknown>() => Promise<QueryResult<T>>
   raw: <T = unknown>() => Promise<T[]>
 }
 
-export type SqliteDatabase = {
-  prepare: (query: string) => D1PreparedStatement
-  batch: <T = unknown>(statements: D1PreparedStatement[]) => Promise<D1Result<T>[]>
-  exec: (query: string) => Promise<D1Result>
+export type AppDatabase = {
+  prepare: (query: string) => AppPreparedStatement
+  batch: <T = unknown>(statements: AppPreparedStatement[]) => Promise<QueryResult<T>[]>
+  exec: (query: string) => Promise<QueryResult>
 }
 
 type BoundStatement = {
@@ -33,7 +33,7 @@ type BoundStatement = {
   params: unknown[]
 }
 
-function execStatement(db: Database.Database, stmt: BoundStatement): D1Result {
+function execStatement(db: Database.Database, stmt: BoundStatement): QueryResult {
   const started = Date.now()
   const prepared = db.prepare(stmt.sql)
   const isSelect =
@@ -47,7 +47,7 @@ function execStatement(db: Database.Database, stmt: BoundStatement): D1Result {
       results: rows,
       meta: {
         changes: 0,
-        last_row_id: Number(db.prepare('SELECT last_insert_rowid() AS id').get()?.id ?? 0),
+        last_row_id: Number((db.prepare('SELECT last_insert_rowid() AS id').get() as { id?: number | bigint } | undefined)?.id ?? 0),
         duration: Date.now() - started,
       },
     }
@@ -65,14 +65,14 @@ function execStatement(db: Database.Database, stmt: BoundStatement): D1Result {
   }
 }
 
-class PreparedStatement implements D1PreparedStatement {
+class PreparedStatement implements AppPreparedStatement {
   constructor(
     private readonly db: Database.Database,
     private readonly sql: string,
     private readonly params: unknown[] = [],
   ) {}
 
-  bind(...values: unknown[]): D1PreparedStatement {
+  bind(...values: unknown[]): AppPreparedStatement {
     return new PreparedStatement(this.db, this.sql, values)
   }
 
@@ -84,12 +84,12 @@ class PreparedStatement implements D1PreparedStatement {
     return row as T
   }
 
-  async all<T = unknown>(): Promise<D1Result<T>> {
-    return execStatement(this.db, { sql: this.sql, params: this.params }) as D1Result<T>
+  async all<T = unknown>(): Promise<QueryResult<T>> {
+    return execStatement(this.db, { sql: this.sql, params: this.params }) as QueryResult<T>
   }
 
-  async run<T = unknown>(): Promise<D1Result<T>> {
-    return execStatement(this.db, { sql: this.sql, params: this.params }) as D1Result<T>
+  async run<T = unknown>(): Promise<QueryResult<T>> {
+    return execStatement(this.db, { sql: this.sql, params: this.params }) as QueryResult<T>
   }
 
   async raw<T = unknown>(): Promise<T[]> {
@@ -103,7 +103,7 @@ class PreparedStatement implements D1PreparedStatement {
   }
 }
 
-export function openSqlite(sqlitePath: string): { raw: Database.Database; db: SqliteDatabase } {
+export function openSqlite(sqlitePath: string): { raw: Database.Database; db: AppDatabase } {
   fs.mkdirSync(path.dirname(sqlitePath), { recursive: true })
   const raw = new Database(sqlitePath)
   raw.pragma('journal_mode = WAL')
@@ -111,15 +111,15 @@ export function openSqlite(sqlitePath: string): { raw: Database.Database; db: Sq
   raw.pragma('foreign_keys = ON')
   raw.pragma('synchronous = NORMAL')
 
-  const db: SqliteDatabase = {
+  const db: AppDatabase = {
     prepare(query: string) {
       return new PreparedStatement(raw, query)
     },
-    async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
+    async batch<T = unknown>(statements: AppPreparedStatement[]): Promise<QueryResult<T>[]> {
       const tx = raw.transaction(() => {
         return statements.map((s) => {
           const bound = (s as PreparedStatement)._bound()
-          return execStatement(raw, bound) as D1Result<T>
+          return execStatement(raw, bound) as QueryResult<T>
         })
       })
       return tx()

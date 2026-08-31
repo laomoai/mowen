@@ -49,7 +49,7 @@ export default defineConfig({
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
-  // 开发时将 /api 代理到本地 Worker（wrangler dev 端口 8787）
+  // 开发时将 /api 代理到本地 Node 服务
   server: {
     port: 5173,
     proxy: {
@@ -59,7 +59,7 @@ export default defineConfig({
       },
     },
   },
-  // 构建输出到 Worker 的 public 目录，wrangler deploy 时一起打包
+  // 构建输出到 Node 服务静态资源目录
   build: {
     outDir: '../public',
     emptyOutDir: true,

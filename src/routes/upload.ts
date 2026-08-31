@@ -44,7 +44,7 @@ upload.post('/image', async (c) => {
   })
 })
 
-// DELETE /api/upload/image — 删除 R2 中的图片（thumb + display）
+// DELETE /api/upload/image — 删除本地对象存储中的图片（thumb + display）
 upload.delete('/image', async (c) => {
   if (c.get('keyType') === 'readonly') {
     return c.json({ error: { message: 'Read-only key cannot delete files' } }, 403)

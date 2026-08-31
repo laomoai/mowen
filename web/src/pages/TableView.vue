@@ -78,7 +78,7 @@ const highlightId = ref<string | null>((route.query.highlight as string) ?? null
 type ViewMode = 'grid' | 'gallery' | 'chart' | 'kanban'
 
 function getStoredViewMode(table: string): ViewMode {
-  const stored = localStorage.getItem(`d1table_viewmode_${table}`)
+  const stored = localStorage.getItem(`mowen_viewmode_${table}`)
   return (['grid', 'gallery', 'chart', 'kanban'].includes(stored ?? '') ? stored : 'grid') as ViewMode
 }
 
@@ -112,7 +112,7 @@ watch(tableName, (newTable) => {
 function switchView(v: string) {
   const mode = v as ViewMode
   viewMode.value = mode
-  localStorage.setItem(`d1table_viewmode_${tableName.value}`, mode)
+  localStorage.setItem(`mowen_viewmode_${tableName.value}`, mode)
 }
 
 const {

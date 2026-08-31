@@ -5,8 +5,8 @@
  */
 import { createInterface } from "node:readline";
 
-const URL_BASE = (process.env.MOWEN_URL || process.env.D1TABLE_URL || "https://mowen.lemoai.cn").replace(/\/$/, "");
-const API_KEY = (process.env.MOWEN_KEY || process.env.D1TABLE_KEY || "").trim();
+const URL_BASE = (process.env.MOWEN_URL || "https://mowen.lemoai.cn").replace(/\/$/, "");
+const API_KEY = (process.env.MOWEN_KEY || "").trim();
 
 const TOOLS = [
   { name: "list_tables", description: "列出当前 Key 可见的表格", inputSchema: { type: "object", properties: {} } },

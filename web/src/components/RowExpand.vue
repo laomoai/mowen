@@ -526,11 +526,11 @@ onBeforeUnmount(() => { if (totpTimer) clearInterval(totpTimer) })
 
 // ── 字体大小 ──────────────────────────────────────────────────
 type FontSize = 'small' | 'medium' | 'large'
-const fontSize = ref<FontSize>((localStorage.getItem('d1table_detail_font_size') as FontSize) || 'medium')
+const fontSize = ref<FontSize>((localStorage.getItem('mowen_detail_font_size') as FontSize) || 'medium')
 
 function setFontSize(size: FontSize) {
   fontSize.value = size
-  localStorage.setItem('d1table_detail_font_size', size)
+  localStorage.setItem('mowen_detail_font_size', size)
 }
 
 // ── 电脑右侧半屏；手机用 100% 高度底部全屏 ──────────────────

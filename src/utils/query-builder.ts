@@ -45,7 +45,7 @@ function escapeLike(value: string): string {
  *   简化版：cursor 基于 id，sort 字段做 ORDER BY，结果一致但在极端数据下
  *   游标前几行可能被跳过；对管理工具足够用，大规模生产可升级为复合游标
  *
- * 为何不用 OFFSET：OFFSET N 需扫描前 N 行，大页码时消耗 D1 行读取额度
+ * 为何不用 OFFSET：OFFSET N 需扫描前 N 行，大页码时会拖慢 SQLite 查询。
  */
 export function buildSelectSQL(opts: SelectOptions): {
   sql: string

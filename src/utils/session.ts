@@ -28,7 +28,7 @@ function base64urlDecode(str: string): Uint8Array {
 
 // ── HMAC-SHA256 工具 ──────────────────────────────────────────
 
-async function importHmacKey(secret: string): Promise<CryptoKey> {
+async function importHmacKey(secret: string) {
   const keyData = new TextEncoder().encode(secret)
   return crypto.subtle.importKey(
     'raw',

@@ -225,7 +225,7 @@ groups.put('/:id/tables', async (c) => {
     }
   }
 
-  const stmts: D1PreparedStatement[] = [
+  const stmts: AppPreparedStatement[] = [
     c.env.DB.prepare(`DELETE FROM _group_tables WHERE group_id = ?`).bind(id),
   ]
 
@@ -270,7 +270,7 @@ groups.put('/:id/keys', async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }
 
-  const stmts: D1PreparedStatement[] = [
+  const stmts: AppPreparedStatement[] = [
     c.env.DB.prepare(`DELETE FROM _api_key_groups WHERE group_id = ?`).bind(id),
   ]
 

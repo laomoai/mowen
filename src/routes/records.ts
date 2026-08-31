@@ -18,12 +18,12 @@ const SELECT_COLORS = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#
  * 若有则自动追加并返回需要更新 _field_meta 的 PreparedStatement 列表。
  */
 function buildSelectOptionStmts(
-  db: D1Database,
+  db: AppDatabase,
   tableName: string,
   fieldMeta: FieldMetaRow[],
   rows: Record<string, unknown>[],
-): D1PreparedStatement[] {
-  const stmts: D1PreparedStatement[] = []
+): AppPreparedStatement[] {
+  const stmts: AppPreparedStatement[] = []
 
   for (const field of fieldMeta) {
     if (field.field_type !== 'select') continue
@@ -74,9 +74,9 @@ function buildSelectOptionStmts(
  *   sort=field:asc|desc   排序
  *   fields=f1,f2          只返回指定字段
  *
- * D1 成本优化：
+ * SQLite 查询优化：
  * - keyset 分页：只读 page_size 行，不扫描历史数据
- * - fields 指定字段：减少数据传输和 Worker 处理量
+ * - fields 指定字段：减少数据传输和 JSON 序列化开销
  * - 不做 COUNT(*)：避免全表扫描；total 从 _meta 表取（1行）
  */
 records.get('/:tableName/records', async (c) => {
@@ -258,7 +258,7 @@ records.get('/:tableName/records/search', async (c) => {
 /**
  * GET /api/tables/:tableName/records/:id
  * 查询单条记录
- * D1 成本：通过主键查询，1行
+ * 通过主键查询单行。
  */
 records.get('/:tableName/records/:id', async (c) => {
   const { tableName, id } = c.req.param()
@@ -296,7 +296,7 @@ records.get('/:tableName/records/:id', async (c) => {
 /**
  * POST /api/tables/:tableName/records
  * 新增记录
- * D1 成本：1行写入 + 1行写入（_meta 计数更新）
+ * 写入记录后同步更新 _meta 计数。
  */
 records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
@@ -358,7 +358,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
       ...optionStmts,
     ])
 
-    const insertResult = results[0] as D1Result
+    const insertResult = results[0] as QueryResult
     const newId = insertResult.meta?.last_row_id
 
     // Construct response from input data + generated id (avoids extra SELECT)
@@ -383,7 +383,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
 /**
  * PATCH /api/tables/:tableName/records/:id
  * 更新记录（只更新请求体中提供的字段）
- * D1 成本：1行写入
+ * 更新单条记录。
  */
 records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const { tableName, id } = c.req.param()
@@ -417,7 +417,7 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
     .bind(...values)
 
   const results = await c.env.DB.batch([updateStmt, ...optionStmts])
-  const updateResult = results[0] as D1Result
+  const updateResult = results[0] as QueryResult
 
   if (updateResult.meta.changes === 0) {
     return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
@@ -429,7 +429,7 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 /**
  * DELETE /api/tables/:tableName/records/:id
  * 删除记录
- * D1 成本：1行写入 + 1行写入（计数更新）
+ * 删除记录后同步更新计数。
  */
 records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const { tableName, id } = c.req.param()
@@ -467,7 +467,7 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 /**
  * POST /api/tables/:tableName/records/batch
  * 批量新增（最多 500 条）
- * D1 成本：使用 db.batch()，N 条 = N 行写入，但只消耗 1 次请求往返
+ * 使用事务批量写入，减少多语句写入的中间状态。
  */
 records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
@@ -492,7 +492,7 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
   const rows = body.records.slice(0, 500) // 单次最多 500 条
 
   const requiredCols = writableCols.filter((c) => c.notnull === 1 && c.dflt_value === null)
-  const stmts: D1PreparedStatement[] = []
+  const stmts: AppPreparedStatement[] = []
 
   for (let idx = 0; idx < rows.length; idx++) {
     const row = rows[idx]
@@ -666,7 +666,7 @@ function getLinkFields(fieldMeta: FieldMetaRow[]): Array<{ column_name: string; 
  * 解析嵌套 link ID → 标题（当 display_field 本身是 link 类型时使用）
  */
 async function resolveNestedLinkIds(
-  db: D1Database,
+  db: AppDatabase,
   targetTable: string,
   ids: string[],
   displayField?: string,
@@ -712,7 +712,7 @@ async function resolveNestedLinkIds(
  * 获取目标表的 "primary field"（第一个 text/longtext 类型的非系统字段）
  * 用于 link 字段的显示标题
  */
-async function getTablePrimaryField(db: D1Database, tableName: string): Promise<string | null> {
+async function getTablePrimaryField(db: AppDatabase, tableName: string): Promise<string | null> {
   if (!isValidIdentifier(tableName)) return null
   const meta = await db.prepare(
     `SELECT column_name, field_type FROM _field_meta WHERE table_name = ? AND column_name NOT IN ('id', 'created_at') ORDER BY order_index ASC`
@@ -730,7 +730,7 @@ async function getTablePrimaryField(db: D1Database, tableName: string): Promise<
  * 按目标表分组批量查询，减少 DB 调用
  */
 async function resolveLinkValues(
-  db: D1Database,
+  db: AppDatabase,
   rows: Record<string, unknown>[],
   linkFields: Array<{ column_name: string; link_table: string; link_display_field?: string }>,
   allowedNoteIds?: Set<string> | null,

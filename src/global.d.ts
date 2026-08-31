@@ -1,7 +1,13 @@
-import type { SqliteDatabase } from './db/sqlite'
+import type {
+  AppDatabase as RuntimeDatabase,
+  AppPreparedStatement as RuntimePreparedStatement,
+  QueryResult as RuntimeQueryResult,
+} from './db/sqlite'
 
 declare global {
-  type D1Database = SqliteDatabase
+  type AppDatabase = RuntimeDatabase
+  type AppPreparedStatement = RuntimePreparedStatement
+  type QueryResult<T = unknown> = RuntimeQueryResult<T>
 }
 
 export {}

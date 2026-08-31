@@ -1,8 +1,8 @@
-import type { SqliteDatabase } from './db/sqlite'
+import type { AppDatabase } from './db/sqlite'
 import type { LocalBucket } from './storage/local-bucket'
 
 export type Env = {
-  DB: SqliteDatabase
+  DB: AppDatabase
   BUCKET: LocalBucket
   ENVIRONMENT: string
   ADMIN_KEY?: string

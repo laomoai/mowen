@@ -1,4 +1,4 @@
-import type { SqliteDatabase } from '../db/sqlite'
+import type { AppDatabase } from '../db/sqlite'
 
 export type WorkspaceKind = 'folder' | 'table' | 'note'
 
@@ -20,7 +20,7 @@ export function newWorkspaceId(kind: WorkspaceKind): string {
   return `wn_${kind[0]}_${rand}`
 }
 
-async function nextSort(db: SqliteDatabase, teamId: number | undefined, parentId: string | null): Promise<number> {
+async function nextSort(db: AppDatabase, teamId: number | undefined, parentId: string | null): Promise<number> {
   const row = parentId
     ? await db.prepare(
         `SELECT COALESCE(MAX(sort_order), -1) AS m FROM _workspace_nodes WHERE parent_id = ? AND (? IS NULL OR team_id = ?)`,
@@ -35,7 +35,7 @@ async function nextSort(db: SqliteDatabase, teamId: number | undefined, parentId
   return (row?.m ?? -1) + 1
 }
 
-export async function getNode(db: SqliteDatabase, id: string): Promise<WorkspaceNode | null> {
+export async function getNode(db: AppDatabase, id: string): Promise<WorkspaceNode | null> {
   return db.prepare(
     `SELECT id, kind, parent_id, sort_order, title, ref, group_id, team_id, icon, archived_at
      FROM _workspace_nodes WHERE id = ?`,
@@ -43,7 +43,7 @@ export async function getNode(db: SqliteDatabase, id: string): Promise<Workspace
 }
 
 export async function assertFolder(
-  db: SqliteDatabase,
+  db: AppDatabase,
   folderId: string | null | undefined,
   teamId: number | undefined,
 ): Promise<WorkspaceNode | null> {
@@ -59,7 +59,7 @@ export async function assertFolder(
 }
 
 export async function ensureFolderForGroup(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: { groupId: number; title: string; teamId?: number; ownerId?: number | null },
 ): Promise<WorkspaceNode> {
   const existing = await db.prepare(
@@ -79,13 +79,13 @@ export async function ensureFolderForGroup(
   }
 }
 
-export async function syncFolderTitleByGroup(db: SqliteDatabase, groupId: number, title: string): Promise<void> {
+export async function syncFolderTitleByGroup(db: AppDatabase, groupId: number, title: string): Promise<void> {
   await db.prepare(
     `UPDATE _workspace_nodes SET title = ?, updated_at = unixepoch() WHERE kind = 'folder' AND group_id = ?`,
   ).bind(title, groupId).run()
 }
 
-export async function removeFolderByGroup(db: SqliteDatabase, groupId: number): Promise<void> {
+export async function removeFolderByGroup(db: AppDatabase, groupId: number): Promise<void> {
   const folder = await db.prepare(
     `SELECT id FROM _workspace_nodes WHERE kind = 'folder' AND group_id = ?`,
   ).bind(groupId).first<{ id: string }>()
@@ -97,7 +97,7 @@ export async function removeFolderByGroup(db: SqliteDatabase, groupId: number): 
 }
 
 export async function attachTablesToGroupFolder(
-  db: SqliteDatabase,
+  db: AppDatabase,
   groupId: number,
   tableNames: string[],
 ): Promise<void> {
@@ -116,7 +116,7 @@ export async function attachTablesToGroupFolder(
   }
 }
 
-export async function backfillTableFolderParents(db: SqliteDatabase, teamId?: number): Promise<void> {
+export async function backfillTableFolderParents(db: AppDatabase, teamId?: number): Promise<void> {
   const sql = teamId !== undefined
     ? `SELECT t.id AS node_id, (
          SELECT n.id FROM _group_tables gt
@@ -151,7 +151,7 @@ export async function backfillTableFolderParents(db: SqliteDatabase, teamId?: nu
   }
 }
 
-export async function backfillMissingGroupFolders(db: SqliteDatabase, teamId?: number): Promise<void> {
+export async function backfillMissingGroupFolders(db: AppDatabase, teamId?: number): Promise<void> {
   const sql = teamId !== undefined
     ? `SELECT g.id, g.name, g.team_id, g.owner_id FROM _groups g
        WHERE g.team_id = ? AND NOT EXISTS (
@@ -175,7 +175,7 @@ export async function backfillMissingGroupFolders(db: SqliteDatabase, teamId?: n
 }
 
 export async function createFolder(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: { title: string; parentId?: string | null; teamId?: number; ownerId?: number | null },
 ): Promise<WorkspaceNode> {
   const parent = await assertFolder(db, opts.parentId, opts.teamId)
@@ -201,7 +201,7 @@ export async function createFolder(
   }
 }
 
-export async function renameFolder(db: SqliteDatabase, id: string, title: string, teamId?: number): Promise<void> {
+export async function renameFolder(db: AppDatabase, id: string, title: string, teamId?: number): Promise<void> {
   const node = await getNode(db, id)
   if (!node || node.kind !== 'folder') {
     throw Object.assign(new Error('Folder not found'), { status: 404, code: 'NOT_FOUND' })
@@ -236,7 +236,7 @@ function normalizeIcon(icon: string | null): string | null {
 }
 
 export async function updateFolderIcon(
-  db: SqliteDatabase,
+  db: AppDatabase,
   id: string,
   icon: string | null,
   teamId?: number,
@@ -254,7 +254,7 @@ export async function updateFolderIcon(
   ).bind(value, id).run()
 }
 
-export async function deleteEmptyFolder(db: SqliteDatabase, id: string, teamId?: number): Promise<void> {
+export async function deleteEmptyFolder(db: AppDatabase, id: string, teamId?: number): Promise<void> {
   const node = await getNode(db, id)
   if (!node || node.kind !== 'folder') {
     throw Object.assign(new Error('Folder not found'), { status: 404, code: 'NOT_FOUND' })
@@ -276,21 +276,24 @@ export async function deleteEmptyFolder(db: SqliteDatabase, id: string, teamId?:
   ])
 }
 
-async function isDescendant(db: SqliteDatabase, ancestorId: string, maybeChildId: string): Promise<boolean> {
+async function isDescendant(db: AppDatabase, ancestorId: string, maybeChildId: string): Promise<boolean> {
   let current: string | null = maybeChildId
   const seen = new Set<string>()
   while (current) {
     if (current === ancestorId) return true
     if (seen.has(current)) break
     seen.add(current)
-    const row = await db.prepare(`SELECT parent_id FROM _workspace_nodes WHERE id = ?`).bind(current).first<{ parent_id: string | null }>()
+    const row: { parent_id: string | null } | null = await db
+      .prepare(`SELECT parent_id FROM _workspace_nodes WHERE id = ?`)
+      .bind(current)
+      .first<{ parent_id: string | null }>()
     current = row?.parent_id ?? null
   }
   return false
 }
 
 export async function moveNode(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: { id: string; parentId: string | null; sortOrder?: number; teamId?: number },
 ): Promise<void> {
   const sourceFolderId = opts.id.includes('::') ? opts.id.slice(opts.id.indexOf('::') + 2) : null
@@ -337,7 +340,7 @@ export async function moveNode(
 }
 
 export async function ensureTableNode(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: { tableName: string; title: string; folderId?: string | null; teamId?: number; ownerId?: number | null },
 ): Promise<void> {
   const existing = await db.prepare(
@@ -370,7 +373,7 @@ export async function ensureTableNode(
 }
 
 export async function ensureNoteNode(
-  db: SqliteDatabase,
+  db: AppDatabase,
   opts: { noteId: string; title: string; folderId?: string | null; teamId?: number; ownerId?: number | null },
 ): Promise<void> {
   const existing = await db.prepare(
@@ -394,12 +397,12 @@ export async function ensureNoteNode(
   ).run()
 }
 
-export async function removeNodeByRef(db: SqliteDatabase, kind: 'table' | 'note', ref: string): Promise<void> {
+export async function removeNodeByRef(db: AppDatabase, kind: 'table' | 'note', ref: string): Promise<void> {
   await db.prepare(`DELETE FROM _workspace_nodes WHERE kind = ? AND ref = ?`).bind(kind, ref).run()
 }
 
 export async function updateNodeTitleByRef(
-  db: SqliteDatabase,
+  db: AppDatabase,
   kind: 'table' | 'note',
   ref: string,
   title: string,
@@ -410,7 +413,7 @@ export async function updateNodeTitleByRef(
 }
 
 export async function expandTablesAcrossFolders(
-  db: SqliteDatabase,
+  db: AppDatabase,
   teamId: number | undefined,
   nodes: WorkspaceNode[],
 ): Promise<WorkspaceNode[]> {
@@ -467,7 +470,7 @@ export function canonicalNodeId(id: string): string {
 }
 
 export async function listWorkspaceNodes(
-  db: SqliteDatabase,
+  db: AppDatabase,
   teamId: number | undefined,
 ): Promise<WorkspaceNode[]> {
   const sql = teamId !== undefined
@@ -529,7 +532,7 @@ function excludeArchivedCabinets(nodes: WorkspaceNode[]): WorkspaceNode[] {
   return nodes.filter((n) => !underHidden(n.id))
 }
 
-async function loadTeamNodes(db: SqliteDatabase, teamId: number | undefined): Promise<WorkspaceNode[]> {
+async function loadTeamNodes(db: AppDatabase, teamId: number | undefined): Promise<WorkspaceNode[]> {
   const sql = teamId !== undefined
     ? `SELECT id, kind, parent_id, sort_order, title, ref, group_id, team_id, icon, archived_at
        FROM _workspace_nodes WHERE team_id = ?`
@@ -561,7 +564,7 @@ function subtreeIds(nodes: WorkspaceNode[], rootId: string): string[] {
 }
 
 async function cabinetContents(
-  db: SqliteDatabase,
+  db: AppDatabase,
   folderId: string,
   teamId: number | undefined,
 ): Promise<{ nodes: WorkspaceNode[]; subtree: WorkspaceNode[]; idSet: Set<string> }> {
@@ -573,7 +576,7 @@ async function cabinetContents(
 }
 
 export async function archiveFolder(
-  db: SqliteDatabase,
+  db: AppDatabase,
   folderId: string,
   teamId: number | undefined,
 ): Promise<{ table_count: number; note_count: number }> {
@@ -615,7 +618,7 @@ export async function archiveFolder(
 }
 
 export async function unarchiveFolder(
-  db: SqliteDatabase,
+  db: AppDatabase,
   folderId: string,
   teamId: number | undefined,
 ): Promise<void> {
@@ -640,7 +643,7 @@ export async function unarchiveFolder(
 }
 
 export async function listArchivedFolders(
-  db: SqliteDatabase,
+  db: AppDatabase,
   teamId: number | undefined,
 ): Promise<Array<{ id: string; title: string; archived_at: number; table_count: number; note_count: number }>> {
   const raw = await loadTeamNodes(db, teamId)
@@ -660,7 +663,7 @@ export async function listArchivedFolders(
 }
 
 export async function getArchivedFolderTree(
-  db: SqliteDatabase,
+  db: AppDatabase,
   folderId: string,
   teamId: number | undefined,
 ): Promise<{ folder: WorkspaceNode; nodes: WorkspaceNode[] }> {
@@ -691,7 +694,7 @@ export async function getArchivedFolderTree(
 
 /** Tables and notes inside selected folders, including nested folders. */
 export async function getFolderScopedAccess(
-  db: SqliteDatabase,
+  db: AppDatabase,
   teamId: number | undefined,
   groupIds: number[],
 ): Promise<{ tableNames: string[]; noteIds: string[]; folderGroupIds: number[] }> {

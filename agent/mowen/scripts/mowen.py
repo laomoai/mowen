@@ -19,8 +19,8 @@ def die(msg: str, code: int = 1) -> None:
 
 
 def request(method: str, path: str, body: dict | None = None, query: dict | None = None):
-    base = (os.environ.get("MOWEN_URL") or os.environ.get("D1TABLE_URL") or DEFAULT_URL).rstrip("/")
-    key = (os.environ.get("MOWEN_KEY") or os.environ.get("D1TABLE_KEY") or "").strip()
+    base = (os.environ.get("MOWEN_URL") or DEFAULT_URL).rstrip("/")
+    key = (os.environ.get("MOWEN_KEY") or "").strip()
     if not key:
         die("缺少 MOWEN_KEY。到设置页创建 API Key 后导出该环境变量。")
     url = base + path

@@ -1,30 +1,30 @@
 {
   "schemaVersion": 1,
   "project": {
-    "name": "d1table",
+    "name": "mowen",
     "runtime": "node",
     "buildCommand": "npm ci && npm run build:web",
     "testCommand": null,
     "artifactPath": "."
   },
   "server": {
-    "targetDirectory": "/opt/d1table",
-    "serviceName": "d1table.service",
+    "targetDirectory": "/opt/mowen",
+    "serviceName": "mowen.service",
     "listenHost": "127.0.0.1",
     "listenPort": 18085,
-    "environmentFile": "/etc/d1table.env",
+    "environmentFile": "/etc/mowen.env",
     "healthPath": "/api/health"
   },
   "public": {
     "url": "https://mowen.lemoai.cn",
-    "nginxConfig": "/etc/nginx/sites-available/table.lemoai.cn",
+    "nginxConfig": "/etc/nginx/sites-available/mowen.lemoai.cn",
     "websocket": false
   },
   "data": {
-    "writableDirectories": ["/var/lib/d1table"],
+    "writableDirectories": ["/var/lib/mowen"],
     "databaseType": "sqlite",
-    "backupCommand": "sqlite3 /var/lib/d1table/d1table.sqlite \".backup /opt/backups/d1table/d1table.sqlite\"",
-    "integrityCheckCommand": "sqlite3 /var/lib/d1table/d1table.sqlite 'PRAGMA quick_check;'"
+    "backupCommand": "sqlite3 /var/lib/mowen/mowen.sqlite \".backup /opt/backups/mowen/mowen.sqlite\"",
+    "integrityCheckCommand": "sqlite3 /var/lib/mowen/mowen.sqlite 'PRAGMA quick_check;'"
   },
   "verification": {
     "localHealthUrl": "http://127.0.0.1:18085/api/health",

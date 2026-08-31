@@ -118,7 +118,7 @@ files.get('/*', async (c) => {
   const headers = new Headers()
   obj.writeHttpMetadata(headers)
   headers.set('Cache-Control', signedOk ? 'private, max-age=300' : 'private, no-store')
-  return new Response(obj.body as BodyInit, { headers })
+  return new Response(obj.body, { headers })
 })
 
 export default files

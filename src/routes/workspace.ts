@@ -40,7 +40,8 @@ workspace.post('/folders', requireWriteMiddleware, async (c) => {
   if (c.get('allowedGroupIds') !== null && c.get('allowedGroupIds') !== undefined) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Scoped API keys cannot create folders' } }, 403)
   }
-  const body = await c.req.json<{ title?: string; parent_id?: string | null }>().catch(() => ({}))
+  const body = await c.req.json<{ title?: string; parent_id?: string | null }>()
+    .catch(() => ({} as { title?: string; parent_id?: string | null }))
   try {
     const node = await createFolder(c.env.DB, {
       title: body.title ?? '',
@@ -55,7 +56,8 @@ workspace.post('/folders', requireWriteMiddleware, async (c) => {
 })
 
 workspace.patch('/folders/:id', requireWriteMiddleware, async (c) => {
-  const body = await c.req.json<{ title?: string; icon?: string | null }>().catch(() => ({}))
+  const body = await c.req.json<{ title?: string; icon?: string | null }>()
+    .catch(() => ({} as { title?: string; icon?: string | null }))
   try {
     if (body.title !== undefined) {
       await renameFolder(c.env.DB, c.req.param('id'), body.title, c.get('teamId'))
@@ -114,7 +116,8 @@ workspace.post('/folders/:id/unarchive', requireWriteMiddleware, async (c) => {
 })
 
 workspace.post('/move', requireWriteMiddleware, async (c) => {
-  const body = await c.req.json<{ id?: string; parent_id?: string | null; sort_order?: number }>().catch(() => ({}))
+  const body = await c.req.json<{ id?: string; parent_id?: string | null; sort_order?: number }>()
+    .catch(() => ({} as { id?: string; parent_id?: string | null; sort_order?: number }))
   if (!body.id) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'id is required' } }, 400)
   }

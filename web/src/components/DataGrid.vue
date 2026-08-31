@@ -232,7 +232,7 @@ const searchText = ref('')
 const selectedCount = ref(0)
 const batchDeleting = ref(false)
 const currentPage = ref(1)
-const pageSize = ref(parseInt(localStorage.getItem('d1table_page_size') ?? '30', 10) || 30)
+const pageSize = ref(parseInt(localStorage.getItem('mowen_page_size') ?? '30', 10) || 30)
 const exporting = ref(false)
 const appliedSearchText = ref('')
 const copiedTableName = ref(false)
@@ -403,7 +403,7 @@ watch([activeFilters, sortField, sortDir, pageSize, appliedSearchText], () => {
   currentPage.value = 1
 })
 watch(pageSize, (v) => {
-  localStorage.setItem('d1table_page_size', String(v))
+  localStorage.setItem('mowen_page_size', String(v))
 })
 
 // ── 数据查询 ─────────────────────────────────────────────────

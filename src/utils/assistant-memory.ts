@@ -1,4 +1,4 @@
-import type { SqliteDatabase } from '../db/sqlite'
+import type { AppDatabase } from '../db/sqlite'
 
 export type StoredMsg = {
   id: string
@@ -19,7 +19,7 @@ export type ThreadRow = {
   updated_at: number
 }
 
-export async function getOrCreateThread(db: SqliteDatabase, userId: number, teamId?: number): Promise<ThreadRow> {
+export async function getOrCreateThread(db: AppDatabase, userId: number, teamId?: number): Promise<ThreadRow> {
   const existing = await db.prepare(
     `SELECT id, user_id, team_id, title, summary, updated_at FROM _assistant_threads WHERE user_id = ?`,
   ).bind(userId).first<ThreadRow>()
@@ -33,7 +33,7 @@ export async function getOrCreateThread(db: SqliteDatabase, userId: number, team
   }
 }
 
-export async function listMessages(db: SqliteDatabase, threadId: string, limit = 120): Promise<StoredMsg[]> {
+export async function listMessages(db: AppDatabase, threadId: string, limit = 120): Promise<StoredMsg[]> {
   const rows = await db.prepare(
     `SELECT id, role, content, draft_json, steps_json, topic, created_at
      FROM _assistant_messages WHERE thread_id = ? ORDER BY created_at ASC, id ASC`,
@@ -43,7 +43,7 @@ export async function listMessages(db: SqliteDatabase, threadId: string, limit =
 }
 
 export async function appendMessage(
-  db: SqliteDatabase,
+  db: AppDatabase,
   threadId: string,
   msg: { role: 'user' | 'assistant'; content: string; draft?: unknown; steps?: unknown; topic?: string | null },
 ): Promise<void> {
@@ -64,7 +64,7 @@ export async function appendMessage(
 }
 
 export async function updateThreadMeta(
-  db: SqliteDatabase,
+  db: AppDatabase,
   threadId: string,
   patch: { title?: string; summary?: string },
 ): Promise<void> {

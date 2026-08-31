@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
-import type { D1PreparedStatement } from '../db/sqlite'
+import type { AppPreparedStatement } from '../db/sqlite'
 import { requireWriteMiddleware, requireAdminMiddleware } from '../middleware/auth'
 import { addTeamMember, isValidEmail, listUserSpaces } from '../utils/members'
 import { generateApiKey, sha256 } from '../utils/crypto'
@@ -14,7 +14,7 @@ type ApiKeySchemaCapabilities = {
   hasKeyPlainColumn: boolean
 }
 
-async function getApiKeySchemaCapabilities(db: D1Database): Promise<ApiKeySchemaCapabilities> {
+async function getApiKeySchemaCapabilities(db: AppDatabase): Promise<ApiKeySchemaCapabilities> {
   const [apiKeyColumns, noteRootsTable] = await Promise.all([
     db.prepare(`PRAGMA table_info('_api_keys')`).all<{ name: string }>(),
     db.prepare(
@@ -35,7 +35,7 @@ function getDefaultNotesScope(scope: 'all' | 'groups'): 'all' | 'none' {
 }
 
 async function validateGroupIds(
-  db: D1Database,
+  db: AppDatabase,
   teamId: number | undefined,
   groupIds: number[] | undefined,
 ): Promise<boolean> {
@@ -52,7 +52,7 @@ async function validateGroupIds(
 }
 
 async function validateNoteRootIds(
-  db: D1Database,
+  db: AppDatabase,
   teamId: number | undefined,
   noteRootIds: string[] | undefined,
 ): Promise<boolean> {
@@ -318,7 +318,7 @@ admin.patch('/keys/:id', async (c) => {
     if (!key) return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
   }
 
-  const stmts: D1PreparedStatement[] = []
+  const stmts: AppPreparedStatement[] = []
 
   if (body.scope) {
     stmts.push(
@@ -411,7 +411,7 @@ admin.delete('/keys/:id/permanent', async (c) => {
     return c.json({ error: { code: 'INVALID_STATE', message: 'Only revoked keys can be permanently deleted' } }, 400)
   }
 
-  const stmts: D1PreparedStatement[] = [
+  const stmts: AppPreparedStatement[] = [
     c.env.DB.prepare(`DELETE FROM _api_key_groups WHERE key_id = ?`).bind(id),
   ]
 
