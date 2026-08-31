@@ -59,12 +59,30 @@ async function main() {
     body: JSON.stringify({ team_id: firstTeamId }),
   })
   await assertWorkspace(env, executionCtx, adminCookie, ['First Space Note'], ['Second Space Note'])
+  const firstThread = await requestJson(env, executionCtx, '/api/assistant/thread', {
+    headers: cookieHeaders(adminCookie),
+  })
+  await addTable(db, firstTeamId, 'tbl_first_dashboard', 'First Dashboard Table')
+  await requestJson(env, executionCtx, '/api/tables/tbl_first_dashboard/dashboard', {
+    method: 'PUT',
+    headers: cookieHeaders(adminCookie),
+    body: JSON.stringify({ config: [{ type: 'stat', title: 'First Space Only' }] }),
+  })
 
   await requestJson(env, executionCtx, '/api/auth/switch-space', {
     method: 'POST',
     headers: cookieHeaders(adminCookie),
     body: JSON.stringify({ team_id: secondTeamId }),
   })
+  const secondThread = await requestJson(env, executionCtx, '/api/assistant/thread', {
+    headers: cookieHeaders(adminCookie),
+  })
+  if (firstThread.data.thread_id === secondThread.data.thread_id) {
+    throw new Error('assistant thread leaked across spaces')
+  }
+  await expectStatus(env, executionCtx, '/api/tables/tbl_first_dashboard/dashboard', {
+    headers: cookieHeaders(adminCookie),
+  }, 403)
   const invite = await requestJson(env, executionCtx, '/api/teams/current/invites', {
     method: 'POST',
     headers: cookieHeaders(adminCookie),
@@ -149,6 +167,23 @@ async function addNoteNode(db: TestEnv['DB'], teamId: number, id: string, title:
     `INSERT INTO _workspace_nodes (id, kind, parent_id, sort_order, title, ref, team_id)
      VALUES (?, 'note', NULL, 0, ?, ?, ?)`,
   ).bind(`wn_${id}`, title, id, teamId).run()
+}
+
+async function addTable(db: TestEnv['DB'], teamId: number, tableName: string, title: string) {
+  await db.prepare(
+    `CREATE TABLE "${tableName}" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    )`,
+  ).run()
+  await db.prepare(
+    `INSERT INTO _meta (table_name, row_count, title, team_id) VALUES (?, 0, ?, ?)`,
+  ).bind(tableName, title, teamId).run()
+  await db.prepare(
+    `INSERT INTO _workspace_nodes (id, kind, parent_id, sort_order, title, ref, team_id)
+     VALUES (?, 'table', NULL, 0, ?, ?, ?)`,
+  ).bind(`wn_${tableName}`, title, tableName, teamId).run()
 }
 
 async function assertWorkspace(

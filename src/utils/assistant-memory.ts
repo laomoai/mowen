@@ -20,9 +20,17 @@ export type ThreadRow = {
 }
 
 export async function getOrCreateThread(db: AppDatabase, userId: number, teamId?: number): Promise<ThreadRow> {
-  const existing = await db.prepare(
-    `SELECT id, user_id, team_id, title, summary, updated_at FROM _assistant_threads WHERE user_id = ?`,
-  ).bind(userId).first<ThreadRow>()
+  const existing = teamId === undefined
+    ? await db.prepare(
+      `SELECT id, user_id, team_id, title, summary, updated_at
+       FROM _assistant_threads
+       WHERE user_id = ? AND team_id IS NULL`,
+    ).bind(userId).first<ThreadRow>()
+    : await db.prepare(
+      `SELECT id, user_id, team_id, title, summary, updated_at
+       FROM _assistant_threads
+       WHERE user_id = ? AND team_id = ?`,
+    ).bind(userId, teamId).first<ThreadRow>()
   if (existing) return existing
   const id = 'at_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16)
   await db.prepare(

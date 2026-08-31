@@ -3,7 +3,7 @@
     <div class="dashboard-inner">
       <div class="dash-header">
         <div>
-          <h1 class="dash-title">工作区</h1>
+          <h1 class="dash-title">{{ currentSpaceName }}</h1>
           <p class="dash-desc">最近用过的表格和笔记，以及按文件夹整理的内容</p>
         </div>
         <div class="new-wrap">
@@ -156,7 +156,7 @@ import { computed, defineAsyncComponent, h, onMounted, onUnmounted, ref } from '
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, useMessage } from 'naive-ui'
-import { api, notesApi, workspaceApi, type WorkspaceKind, type WorkspaceNode } from '@/api/client'
+import { api, getCurrentUser, notesApi, workspaceApi, type WorkspaceKind, type WorkspaceNode } from '@/api/client'
 import CreateTableModal from '@/components/CreateTableModal.vue'
 import AppModal from '@/components/AppModal.vue'
 import IonIcon from '@/components/IonIcon.vue'
@@ -172,6 +172,13 @@ const { data: nodes, isLoading } = useQuery({
   queryKey: ['workspace'],
   queryFn: workspaceApi.getTree,
 })
+
+const { data: currentUser } = useQuery({
+  queryKey: ['current-user'],
+  queryFn: getCurrentUser,
+})
+
+const currentSpaceName = computed(() => currentUser.value?.current_team?.name || currentUser.value?.team?.name || '工作区')
 
 const searchQuery = ref('')
 const showNewMenu = ref(false)

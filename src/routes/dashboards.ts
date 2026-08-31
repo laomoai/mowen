@@ -5,17 +5,38 @@ import { getUserTables } from '../utils/schema-cache'
 
 const dashboards = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
-// GET /api/tables/:tableName/dashboard
-dashboards.get('/:tableName/dashboard', async (c) => {
-  const { tableName } = c.req.param()
+async function assertDashboardTableAccess(c: {
+  env: Env
+  get: (key: keyof AuthVariables) => unknown
+  json: Function
+}, tableName: string): Promise<Response | null> {
   const tables = await getUserTables(c.env.DB)
   if (!tables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: 'Table not found' } }, 404)
   }
 
+  const teamId = c.get('teamId') as number | undefined
+  if (teamId !== undefined) {
+    const meta = await c.env.DB.prepare(
+      `SELECT team_id FROM _meta WHERE table_name = ?`,
+    ).bind(tableName).first<{ team_id: number | null }>()
+    if (!meta || meta.team_id !== teamId) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Dashboard is not in the active Space' } }, 403)
+    }
+  }
+
+  return null
+}
+
+// GET /api/tables/:tableName/dashboard
+dashboards.get('/:tableName/dashboard', async (c) => {
+  const { tableName } = c.req.param()
+  const accessError = await assertDashboardTableAccess(c, tableName)
+  if (accessError) return accessError
+
   const row = await c.env.DB
-    .prepare('SELECT config FROM _dashboards WHERE table_name = ?')
-    .bind(tableName)
+    .prepare('SELECT config FROM _dashboards WHERE table_name = ? AND (? IS NULL OR team_id = ?)')
+    .bind(tableName, c.get('teamId') ?? null, c.get('teamId') ?? null)
     .first<{ config: string }>()
 
   let config: unknown[] = []
@@ -28,10 +49,8 @@ dashboards.get('/:tableName/dashboard', async (c) => {
 // PUT /api/tables/:tableName/dashboard
 dashboards.put('/:tableName/dashboard', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
-  const tables = await getUserTables(c.env.DB)
-  if (!tables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: 'Table not found' } }, 404)
-  }
+  const accessError = await assertDashboardTableAccess(c, tableName)
+  if (accessError) return accessError
 
   const body = await c.req.json<{ config: unknown[] }>()
   const config = JSON.stringify(body.config ?? [])
