@@ -74,10 +74,15 @@ const TOOLS = [
   },
   {
     name: "create_note",
-    description: "新建笔记",
+    description: "新建笔记。scope=groups 的 Key 创建根笔记时必须传 folder_id，取 workspace_tree 中目标文件夹的节点 id。",
     inputSchema: {
       type: "object",
-      properties: { title: { type: "string" }, content: { type: "string" }, parent_id: { type: "string" } },
+      properties: {
+        title: { type: "string" },
+        content: { type: "string" },
+        parent_id: { type: "string", description: "父笔记 id，用于创建笔记子页" },
+        folder_id: { type: "string", description: "目标文件夹节点 id，用于创建根笔记" },
+      },
       required: ["title"],
     },
   },
@@ -153,6 +158,7 @@ async function callTool(name, args = {}) {
         title: args.title,
         content: args.content || "",
         parent_id: args.parent_id || undefined,
+        folder_id: args.folder_id || undefined,
       });
     case "update_note":
       return api("PATCH", `/api/notes/${encodeURIComponent(args.id)}`, {

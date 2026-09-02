@@ -102,6 +102,56 @@ async function main() {
   const apiKey = createdKey.data.key
   await assertViewerWorkspace(env, executionCtx, apiKey, ['Second Space Note'], ['First Space Note'])
 
+  const authorizedFolder = await requestJson(env, executionCtx, '/api/workspace/folders', {
+    method: 'POST',
+    headers: cookieHeaders(memberCookie),
+    body: JSON.stringify({ title: 'Agent Notes' }),
+  })
+  const unauthorizedFolder = await requestJson(env, executionCtx, '/api/workspace/folders', {
+    method: 'POST',
+    headers: cookieHeaders(memberCookie),
+    body: JSON.stringify({ title: 'Private Notes' }),
+  })
+  const scopedWriteKey = await requestJson(env, executionCtx, '/api/admin/keys', {
+    method: 'POST',
+    headers: cookieHeaders(memberCookie),
+    body: JSON.stringify({
+      name: 'Agent Folder Write Key',
+      type: 'readwrite',
+      scope: 'groups',
+      group_ids: [authorizedFolder.data.group_id],
+    }),
+  })
+  await expectStatus(env, executionCtx, '/api/notes', {
+    method: 'POST',
+    headers: { 'X-API-Key': scopedWriteKey.data.key },
+    body: JSON.stringify({ title: 'Missing Folder Note', content: '' }),
+  }, 400)
+  await expectStatus(env, executionCtx, '/api/notes', {
+    method: 'POST',
+    headers: { 'X-API-Key': scopedWriteKey.data.key },
+    body: JSON.stringify({ title: 'Wrong Folder Note', content: '', folder_id: unauthorizedFolder.data.id }),
+  }, 403)
+  const scopedNote = await requestJson(env, executionCtx, '/api/notes', {
+    method: 'POST',
+    headers: { 'X-API-Key': scopedWriteKey.data.key },
+    body: JSON.stringify({ title: 'Scoped Folder Note', content: '# Scoped', folder_id: authorizedFolder.data.id }),
+  })
+  const scopedNotes = await requestJson(env, executionCtx, '/api/notes', {
+    headers: { 'X-API-Key': scopedWriteKey.data.key },
+  })
+  assertTitles(scopedNotes, ['Scoped Folder Note'], ['Second Space Note'])
+  await requestJson(env, executionCtx, `/api/notes/${scopedNote.data.id}`, {
+    method: 'PATCH',
+    headers: { 'X-API-Key': scopedWriteKey.data.key },
+    body: JSON.stringify({ content: '# Scoped updated' }),
+  })
+  await expectStatus(env, executionCtx, '/api/workspace/move', {
+    method: 'POST',
+    headers: { 'X-API-Key': scopedWriteKey.data.key },
+    body: JSON.stringify({ id: `wn_n_${scopedNote.data.id}`, parent_id: unauthorizedFolder.data.id }),
+  }, 403)
+
   const writeKey = await requestJson(env, executionCtx, '/api/admin/keys', {
     method: 'POST',
     headers: cookieHeaders(memberCookie),

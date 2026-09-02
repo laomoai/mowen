@@ -1,14 +1,16 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware } from '../middleware/auth'
-import { getAccessibleNoteIds } from '../utils/note-access'
+import { canAccessNote, getAccessibleNoteIds } from '../utils/note-access'
 import {
   backfillMissingGroupFolders,
   backfillTableFolderParents,
+  canonicalNodeId,
   createFolder,
   deleteEmptyFolder,
   filterVisibleNodes,
   expandTablesAcrossFolders,
+  getNode,
   listWorkspaceNodes,
   moveNode,
   renameFolder,
@@ -120,6 +122,38 @@ workspace.post('/move', requireWriteMiddleware, async (c) => {
     .catch(() => ({} as { id?: string; parent_id?: string | null; sort_order?: number }))
   if (!body.id) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'id is required' } }, 400)
+  }
+  const allowedGroupIds = c.get('allowedGroupIds')
+  if (allowedGroupIds !== null && allowedGroupIds !== undefined) {
+    const node = await getNode(c.env.DB, canonicalNodeId(body.id))
+    if (!node || (c.get('teamId') !== undefined && node.team_id !== c.get('teamId'))) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Node not found' } }, 404)
+    }
+    if (node.kind === 'folder') {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Scoped API keys cannot move folders' } }, 403)
+    }
+    if (node.kind === 'table' && (!node.ref || !(c.get('allowedTables') ?? []).includes(node.ref))) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this table is not allowed' } }, 403)
+    }
+    if (node.kind === 'note') {
+      const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+      if (!canAccessNote(allowedNoteIds, node.ref)) {
+        return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+      }
+    }
+    if (!body.parent_id) {
+      return c.json({ error: { code: 'FOLDER_REQUIRED', message: 'Scoped API keys can only move nodes into allowed folders' } }, 400)
+    }
+    const target = await getNode(c.env.DB, canonicalNodeId(body.parent_id))
+    if (!target || target.kind !== 'folder') {
+      return c.json({ error: { code: 'INVALID_PARENT', message: 'Parent must be a folder' } }, 400)
+    }
+    if (c.get('teamId') !== undefined && target.team_id !== c.get('teamId')) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Folder not found' } }, 404)
+    }
+    if (target.group_id === null || !allowedGroupIds.includes(target.group_id)) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot move nodes outside allowed folders' } }, 403)
+    }
   }
   try {
     await moveNode(c.env.DB, {

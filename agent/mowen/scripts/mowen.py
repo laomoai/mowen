@@ -98,6 +98,7 @@ def main() -> None:
     s.add_argument("--title", required=True)
     s.add_argument("--content", default="")
     s.add_argument("--parent-id")
+    s.add_argument("--folder", default="", help="目标文件夹节点 id；scope=groups 创建根笔记时必填")
     s = sub.add_parser("update-note")
     s.add_argument("--id", required=True)
     s.add_argument("--title")
@@ -144,6 +145,9 @@ def main() -> None:
         body = {"title": args.title, "content": args.content}
         if args.parent_id:
             body["parent_id"] = args.parent_id
+        folder = (args.folder or "").strip()
+        if folder and folder not in ("root", "null"):
+            body["folder_id"] = folder
         dumps(request("POST", "/api/notes", body))
     elif c == "update-note":
         body = {}

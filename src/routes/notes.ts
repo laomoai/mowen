@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware, teamFilter } from '../middleware/auth'
 import { canAccessNote, getAccessibleNoteIds } from '../utils/note-access'
-import { ensureNoteNode, removeNodeByRef, updateNodeTitleByRef } from '../utils/workspace'
+import { canonicalNodeId, ensureNoteNode, getNode, removeNodeByRef, updateNodeTitleByRef } from '../utils/workspace'
 
 const notes = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -355,7 +355,27 @@ notes.post('/', requireWriteMiddleware, async (c) => {
       return c.json({ error: { code: 'INVALID_PARENT', message: 'Parent note not found' } }, 400)
     }
   } else if (allowedNoteIds !== null) {
-    return c.json({ error: { code: 'FORBIDDEN', message: 'Scoped note access can only create notes inside allowed directories' } }, 403)
+    const allowedGroupIds = c.get('allowedGroupIds')
+    if (allowedGroupIds === null || allowedGroupIds === undefined) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Scoped note access can only create notes inside allowed directories' } }, 403)
+    }
+    if (!body.folder_id) {
+      return c.json({ error: { code: 'FOLDER_REQUIRED', message: 'folder_id is required for scoped note creation' } }, 400)
+    }
+    const folder = await getNode(c.env.DB, canonicalNodeId(body.folder_id))
+    if (!folder || folder.kind !== 'folder') {
+      return c.json({ error: { code: 'INVALID_FOLDER', message: 'folder_id must reference a workspace folder' } }, 400)
+    }
+    if (teamId !== undefined && folder.team_id !== teamId) {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Folder not found' } }, 404)
+    }
+    if (folder.archived_at) {
+      return c.json({ error: { code: 'INVALID_FOLDER', message: 'Cannot create notes inside an archived folder' } }, 400)
+    }
+    if (folder.group_id === null || !allowedGroupIds.includes(folder.group_id)) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot create notes outside allowed folders' } }, 403)
+    }
+    body.folder_id = folder.id
   }
 
   const id = generateId()
