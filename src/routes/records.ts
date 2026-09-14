@@ -128,11 +128,15 @@ records.get('/:tableName/records', async (c) => {
 
   // 解析分页参数
   const pageSize = Math.min(parseInt(query.page_size ?? '20', 10) || 20, 100)
-  const hasPageParam = query.page !== undefined
+  const usesComputedDefaultSort = !!runningBalance && !sort
+  const hasPageParam = query.page !== undefined || usesComputedDefaultSort
   const page = Math.max(1, parseInt(query.page ?? '1', 10) || 1)
   const cursor = query.cursor ? parseInt(query.cursor, 10) : undefined
   // page 参数优先于 cursor；二者同时存在时忽略 cursor
   const offset = hasPageParam && page > 1 ? (page - 1) * pageSize : undefined
+  if (usesComputedDefaultSort && cursor !== undefined) {
+    return c.json({ error: { code: 'PAGE_REQUIRED_FOR_COMPUTED_SORT', message: '累计余额表默认按业务日期排序，请使用 page 分页' } }, 400)
+  }
   if (!hasPageParam && cursor !== undefined && sort?.field === runningBalance?.columnName) {
     return c.json({ error: { code: 'PAGE_REQUIRED_FOR_COMPUTED_SORT', message: '累计余额排序请使用 page 分页' } }, 400)
   }

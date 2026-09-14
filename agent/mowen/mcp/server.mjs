@@ -13,7 +13,12 @@ const TOOLS = [
   { name: "list_tables", description: "列出当前 Key 可见的表格", inputSchema: { type: "object", properties: {} } },
   {
     name: "get_schema",
-    description: "获取表格字段结构",
+    description: "获取表格结构。data.fields 是包含虚拟计算字段的完整应用结构；生成写入时忽略 read_only=true 的字段",
+    inputSchema: { type: "object", properties: { table: { type: "string" } }, required: ["table"] },
+  },
+  {
+    name: "list_fields",
+    description: "获取完整应用字段元数据，包含 virtual、read_only 和 formula_config",
     inputSchema: { type: "object", properties: { table: { type: "string" } }, required: ["table"] },
   },
   {
@@ -24,8 +29,15 @@ const TOOLS = [
       properties: {
         table: { type: "string" },
         page_size: { type: "number" },
+        page: { type: "number", description: "页码；按计算字段排序时用它翻页" },
         cursor: { type: "string" },
         sort: { type: "string", description: "field:asc 或 field:desc" },
+        fields: { type: "string", description: "逗号分隔的 column_name" },
+        filters: {
+          type: "object",
+          description: "筛选对象，key 可包含 __gte/__lte/__gt/__lt/__ne/__like/__nlike，例如 {\"balance__gte\": 1000}",
+          additionalProperties: { type: ["string", "number", "boolean"] },
+        },
       },
       required: ["table"],
     },
@@ -64,6 +76,34 @@ const TOOLS = [
       type: "object",
       properties: { table: { type: "string" }, id: { type: "string" } },
       required: ["table", "id"],
+    },
+  },
+  {
+    name: "create_running_balance_field",
+    description: "新建只读累计余额字段。收入/支出至少一个；每张表最多一个",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" }, title: { type: "string" }, column_name: { type: "string" },
+        opening_balance: { type: "string", description: "最多两位小数" },
+        income_field: { type: "string", description: "数字或货币字段" },
+        expense_field: { type: "string", description: "数字或货币字段" },
+        order_field: { type: "string", description: "日期或日期时间字段" },
+      },
+      required: ["table", "column_name", "opening_balance", "order_field"],
+    },
+  },
+  {
+    name: "update_running_balance_field",
+    description: "更新累计余额的完整配置，会使整列按新配置重算",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: { type: "string" }, field: { type: "string" },
+        opening_balance: { type: "string" }, income_field: { type: "string" },
+        expense_field: { type: "string" }, order_field: { type: "string" },
+      },
+      required: ["table", "field", "opening_balance", "order_field"],
     },
   },
   { name: "list_notes", description: "列出笔记（扁平，用 parent_id 还原树）", inputSchema: { type: "object", properties: {} } },
@@ -126,6 +166,20 @@ async function api(method, path, body) {
   return json;
 }
 
+function runningBalanceConfig(args) {
+  return {
+    version: 1,
+    kind: "running_balance",
+    opening_balance: String(args.opening_balance),
+    income_field: args.income_field || null,
+    expense_field: args.expense_field || null,
+    order_field: args.order_field,
+    tie_breaker: "id",
+    null_as_zero: true,
+    precision: 2,
+  };
+}
+
 async function callTool(name, args = {}) {
   switch (name) {
     case "viewer_me":
@@ -134,11 +188,18 @@ async function callTool(name, args = {}) {
       return api("GET", "/api/tables");
     case "get_schema":
       return api("GET", `/api/tables/${encodeURIComponent(args.table)}`);
+    case "list_fields":
+      return api("GET", `/api/tables/${encodeURIComponent(args.table)}/fields`);
     case "query_records": {
       const q = new URLSearchParams();
       q.set("page_size", String(args.page_size || 20));
+      if (args.page) q.set("page", String(args.page));
       if (args.cursor) q.set("cursor", args.cursor);
       if (args.sort) q.set("sort", args.sort);
+      if (args.fields) q.set("fields", args.fields);
+      for (const [field, value] of Object.entries(args.filters || {})) {
+        q.set(`filter[${field}]`, String(value));
+      }
       return api("GET", `/api/tables/${encodeURIComponent(args.table)}/records?${q}`);
     }
     case "get_record":
@@ -149,6 +210,17 @@ async function callTool(name, args = {}) {
       return api("PATCH", `/api/tables/${encodeURIComponent(args.table)}/records/${encodeURIComponent(args.id)}`, args.data);
     case "delete_record":
       return api("DELETE", `/api/tables/${encodeURIComponent(args.table)}/records/${encodeURIComponent(args.id)}`);
+    case "create_running_balance_field":
+      return api("POST", `/api/tables/${encodeURIComponent(args.table)}/fields`, {
+        title: args.title || "余额",
+        column_name: args.column_name,
+        field_type: "running_balance",
+        formula_config: runningBalanceConfig(args),
+      });
+    case "update_running_balance_field":
+      return api("PATCH", `/api/tables/${encodeURIComponent(args.table)}/fields/${encodeURIComponent(args.field)}`, {
+        formula_config: runningBalanceConfig(args),
+      });
     case "list_notes":
       return api("GET", "/api/notes");
     case "get_note":
@@ -192,7 +264,7 @@ async function handle(msg) {
     return reply(id, {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "mowen", version: "1.0.0" },
+      serverInfo: { name: "mowen", version: "1.1.0" },
     });
   }
   if (method === "notifications/initialized" || method === "initialized") return;

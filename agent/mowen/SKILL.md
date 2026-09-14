@@ -20,11 +20,17 @@ MOWEN_KEY   设置里创建的 API Key（请求头 X-API-Key）
 ```bash
 python3 scripts/mowen.py tables
 python3 scripts/mowen.py schema --table tbl_xxx
+python3 scripts/mowen.py fields --table tbl_xxx
 python3 scripts/mowen.py query --table tbl_xxx --limit 20
+python3 scripts/mowen.py query --table tbl_xxx --page 2 --sort balance:asc
+python3 scripts/mowen.py query --table tbl_xxx --filter 'balance__gte=1000'
 python3 scripts/mowen.py get --table tbl_xxx --id 1
 python3 scripts/mowen.py insert --table tbl_xxx --data '{"col_xxx":"值"}'
 python3 scripts/mowen.py update --table tbl_xxx --id 1 --data '{"col_xxx":"新值"}'
 python3 scripts/mowen.py delete --table tbl_xxx --id 1
+
+python3 scripts/mowen.py create-running-balance --table tbl_xxx --column balance --opening 10000.00 --income income --expense expense --order transaction_date
+python3 scripts/mowen.py update-running-balance --table tbl_xxx --field balance --opening 20000.00 --income income --expense expense --order transaction_date
 
 python3 scripts/mowen.py whoami
 python3 scripts/mowen.py notes
@@ -43,6 +49,11 @@ python3 scripts/mowen.py groups
 ## 约定
 
 - 表格对外用 `name`（如 `tbl_abc123`），界面显示名是 `title`。写记录用字段的 `column_name`。
+- `schema` 的 `data.columns` 只是 SQLite 实体列，`data.fields` 是完整应用字段。读写记录前优先使用 `data.fields`，或调用 `fields`。
+- `virtual=true` 表示虚拟计算字段；`read_only=true` 的字段绝对不得放入 `insert` / `update` 的 `--data`。
+- `running_balance` 是只读累计余额：期初余额 + 截至当前记录的累计收入 - 累计支出。修改收入、支出、日期或历史数据后由服务端自动整列重算；日期为空时余额为空。
+- 每张表最多一个 `running_balance`。收入/支出至少配置一个，必须是数字或货币字段；排序字段必须是日期或日期时间。
+- 按 `running_balance` 排序时，必须用 `--page` / `page` 翻页，不要使用 `cursor`。普通字段查询仍可用 `cursor`。
 - 移动侧栏位置用 `move`，`--id` 是 `workspace` 返回的节点 `id`，不是 `tbl_` / `n_`。`--folder` 是目标文件夹节点 id，`root` 表示根目录。
 - `PATCH /api/notes/:id` 的 `parent_id` 是旧的笔记套笔记，不要用来换文件夹。
 - API Key 归属创建它的空间；一个用户加入多个空间时，给 Agent/小程序使用对应空间里创建的 Key。

@@ -13,6 +13,7 @@
     "smoke:multi-space": "tsx scripts/smoke-multi-space.ts",
     "smoke:revisions": "tsx scripts/smoke-revisions.ts",
     "smoke:running-balance": "tsx scripts/smoke-running-balance.ts",
+    "smoke:agent-package": "node scripts/smoke-agent-package.mjs",
     "benchmark:running-balance": "tsx scripts/benchmark-running-balance.ts"
   },
   "dependencies": {

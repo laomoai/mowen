@@ -64,6 +64,37 @@ def parse_data(raw: str) -> dict:
     return val
 
 
+def parse_filters(values: list[str] | None) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in values or []:
+        if "=" not in item:
+            die(f"--filter 必须是 字段=值：{item}")
+        field, value = item.split("=", 1)
+        field = field.strip()
+        if not field:
+            die("--filter 的字段名不能为空")
+        result[f"filter[{field}]"] = value
+    return result
+
+
+def running_balance_config(args) -> dict:
+    def optional_field(value: str | None):
+        normalized = (value or "").strip()
+        return None if normalized in ("", "none", "null") else normalized
+
+    return {
+        "version": 1,
+        "kind": "running_balance",
+        "opening_balance": args.opening,
+        "income_field": optional_field(args.income),
+        "expense_field": optional_field(args.expense),
+        "order_field": args.order,
+        "tie_breaker": "id",
+        "null_as_zero": True,
+        "precision": 2,
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="mowen", description="墨问 agent CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -72,11 +103,17 @@ def main() -> None:
     sub.add_parser("tables", help="列出表格")
     s = sub.add_parser("schema", help="表结构")
     s.add_argument("--table", required=True)
+    s = sub.add_parser("fields", help="完整应用字段（含虚拟计算字段）")
+    s.add_argument("--table", required=True)
     s = sub.add_parser("query", help="查记录")
     s.add_argument("--table", required=True)
     s.add_argument("--limit", type=int, default=20)
-    s.add_argument("--cursor")
+    paging = s.add_mutually_exclusive_group()
+    paging.add_argument("--cursor")
+    paging.add_argument("--page", type=int)
     s.add_argument("--sort")
+    s.add_argument("--fields", help="逗号分隔的 column_name")
+    s.add_argument("--filter", action="append", help="可重复：字段=值，操作符写在字段后，如 balance__gte=1000")
     s = sub.add_parser("get", help="单条记录")
     s.add_argument("--table", required=True)
     s.add_argument("--id", required=True)
@@ -90,6 +127,21 @@ def main() -> None:
     s = sub.add_parser("delete", help="删除记录")
     s.add_argument("--table", required=True)
     s.add_argument("--id", required=True)
+    s = sub.add_parser("create-running-balance", help="新建累计余额虚拟字段")
+    s.add_argument("--table", required=True)
+    s.add_argument("--title", default="余额")
+    s.add_argument("--column", required=True, help="稳定 column_name，如 balance")
+    s.add_argument("--opening", required=True, help="期初值，最多两位小数")
+    s.add_argument("--income", help="收入的数字/货币字段；不使用时省略")
+    s.add_argument("--expense", help="支出的数字/货币字段；不使用时省略")
+    s.add_argument("--order", required=True, help="日期/日期时间字段")
+    s = sub.add_parser("update-running-balance", help="更新累计余额配置")
+    s.add_argument("--table", required=True)
+    s.add_argument("--field", required=True, help="累计余额的 column_name")
+    s.add_argument("--opening", required=True)
+    s.add_argument("--income")
+    s.add_argument("--expense")
+    s.add_argument("--order", required=True)
 
     sub.add_parser("notes", help="笔记列表")
     s = sub.add_parser("note", help="笔记详情")
@@ -123,12 +175,18 @@ def main() -> None:
         dumps(request("GET", "/api/tables"))
     elif c == "schema":
         dumps(request("GET", f"/api/tables/{args.table}"))
+    elif c == "fields":
+        dumps(request("GET", f"/api/tables/{args.table}/fields"))
     elif c == "query":
-        dumps(request("GET", f"/api/tables/{args.table}/records", query={
+        query = {
             "page_size": str(args.limit),
             "cursor": args.cursor,
+            "page": str(args.page) if args.page is not None else None,
             "sort": args.sort,
-        }))
+            "fields": args.fields,
+        }
+        query.update(parse_filters(args.filter))
+        dumps(request("GET", f"/api/tables/{args.table}/records", query=query))
     elif c == "get":
         dumps(request("GET", f"/api/tables/{args.table}/records/{args.id}"))
     elif c == "insert":
@@ -137,6 +195,17 @@ def main() -> None:
         dumps(request("PATCH", f"/api/tables/{args.table}/records/{args.id}", parse_data(args.data)))
     elif c == "delete":
         dumps(request("DELETE", f"/api/tables/{args.table}/records/{args.id}"))
+    elif c == "create-running-balance":
+        dumps(request("POST", f"/api/tables/{args.table}/fields", {
+            "title": args.title,
+            "column_name": args.column,
+            "field_type": "running_balance",
+            "formula_config": running_balance_config(args),
+        }))
+    elif c == "update-running-balance":
+        dumps(request("PATCH", f"/api/tables/{args.table}/fields/{args.field}", {
+            "formula_config": running_balance_config(args),
+        }))
     elif c == "notes":
         dumps(request("GET", "/api/notes"))
     elif c == "note":

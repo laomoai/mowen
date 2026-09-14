@@ -114,13 +114,13 @@ function openApiSpec(serverUrl: string) {
     openapi: '3.0.0',
     info: {
       title: '墨问 MoWen API',
-      version: '2.5.0',
+      version: '2.5.1',
       description: `墨问 HTTP API。Agent / 小程序使用 \`X-API-Key\`；Web 管理接口使用登录后的 Cookie Session。
 
 表格用 \`name\`（如 tbl_abc123），显示名是 \`title\`；写记录用字段 \`column_name\`。
 文件夹权限：\`scope=groups\` 的 Key 可访问所选文件夹里的表格和笔记。工作区树见 \`/api/workspace/*\`。
 Web 登录态支持一个账号加入多个空间；API Key 归属创建它的空间和授权范围，适合小程序和 Skill 直接访问。
-分页用游标 \`cursor\` / \`next_cursor\`。时间是 UTC ISO 8601。
+普通查询可用游标 \`cursor\` / \`next_cursor\`；按计算字段排序时用 \`page\` / \`page_size\`。时间是 UTC ISO 8601。
 
 Skill：\`/agent/mowen/SKILL.md\``,
     },
@@ -376,6 +376,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
           description: 'Returns only viewer-safe fields. Hidden fields, password fields, and totp fields are excluded before the response is created. Filters and sorting are also restricted to viewer-safe fields.',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1 }, description: 'Page-number pagination. Required for pages after the first when sorting by a computed field.' },
             { name: 'page_size', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
             { name: 'cursor', in: 'query', schema: { type: 'string' }, description: 'The id of the last record from the previous page' },
             { name: 'sort', in: 'query', schema: { type: 'string' }, description: 'Format: safe_field:asc or safe_field:desc' },
@@ -554,7 +555,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
       '/api/tables/{tableName}': {
         get: {
           summary: 'Get table schema',
-          description: 'Returns the field definitions for a table, including display names, field types, and the table icon.',
+          description: 'Returns physical SQLite columns in `columns` for backwards compatibility and the complete application schema in `fields`, including virtual computed fields.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
             '200': {
@@ -582,6 +583,25 @@ Skill：\`/agent/mowen/SKILL.md\``,
                                 nullable: { type: 'boolean' },
                                 isPrimaryKey: { type: 'boolean' },
                                 defaultValue: { type: 'string', nullable: true },
+                              },
+                            },
+                          },
+                          fields: {
+                            type: 'array',
+                            description: 'Complete application fields. Prefer this collection when generating record forms or writes.',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                name: { type: 'string', description: 'Stable API field name' },
+                                title: { type: 'string', description: 'Display name' },
+                                type: { type: 'string', description: 'SQLite type, or VIRTUAL for computed fields' },
+                                field_type: { type: 'string', description: 'UI field type' },
+                                nullable: { type: 'boolean' },
+                                isPrimaryKey: { type: 'boolean' },
+                                defaultValue: { type: 'string', nullable: true },
+                                virtual: { type: 'boolean' },
+                                read_only: { type: 'boolean', description: 'Never include true fields in create or update payloads' },
+                                formula_config: { allOf: [{ $ref: '#/components/schemas/RunningBalanceConfig' }], nullable: true },
                               },
                             },
                           },
@@ -635,6 +655,7 @@ Skill：\`/agent/mowen/SKILL.md\``,
           description: 'datetime fields are automatically converted to ISO 8601 UTC format (e.g. 2026-03-15T04:37:31.000Z). The response includes a fields mapping to help interpret column names.',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1 }, description: 'Page-number pagination. Required for pages after the first when sorting by a computed field.' },
             { name: 'page_size', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
             { name: 'cursor', in: 'query', schema: { type: 'string' }, description: 'The id of the last record from the previous page' },
             { name: 'sort', in: 'query', schema: { type: 'string' }, description: 'Format: field:asc or field:desc' },

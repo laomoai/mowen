@@ -189,6 +189,20 @@ tables.get('/:tableName', async (c) => {
         isPrimaryKey: col.pk > 0,
         defaultValue: col.dflt_value,
       })),
+      // `columns` remains the physical SQLite schema for backwards compatibility.
+      // `fields` is the complete application schema, including virtual computed fields.
+      fields: fieldMeta.map((field) => ({
+        name: field.column_name,
+        title: field.title,
+        type: field.sqliteType || 'TEXT',
+        field_type: field.field_type,
+        nullable: field.nullable,
+        isPrimaryKey: field.isPrimaryKey,
+        defaultValue: field.defaultValue,
+        virtual: field.virtual,
+        read_only: field.read_only,
+        formula_config: field.formula_config,
+      })),
     },
   })
 })
