@@ -1,0 +1,19 @@
+[Unit]
+Description=MoWen SQLite online backup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/local/sbin/mowen-sqlite-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadOnlyPaths=/var/lib/mowen
+ReadWritePaths=-/opt/backups/mowen-scheduled

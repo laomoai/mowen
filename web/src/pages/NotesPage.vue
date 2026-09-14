@@ -26,6 +26,7 @@
             <button v-else-if="!narrow" class="note-lock-btn" @click="toggleNoteLock" :title="activeNote.is_locked ? '解锁笔记' : '锁定笔记'">
               <IonIcon :name="activeNote.is_locked ? 'LockClosedOutline' : 'LockOpenOutline'" :size="14" />
             </button>
+            <button v-if="!narrow" class="note-action-btn" @click="showHistory = true">历史版本</button>
             <button v-if="narrow" type="button" class="note-ask-btn" @click="askAssistant('请改当前这篇笔记：', false)">让助手改</button>
             <span v-if="activeNote.updated_at" class="note-time">
               更新于 {{ formatTime(activeNote.updated_at) }}
@@ -100,6 +101,14 @@
       />
     </AppModal>
 
+    <VersionHistoryModal
+      v-if="activeNoteId"
+      v-model:show="showHistory"
+      kind="note"
+      :entity-id="activeNoteId"
+      @restored="onVersionRestored"
+    />
+
     <!-- Table reference picker -->
     <AppModal v-model:show="showTablePicker" title="插入表格引用" width="400px" height="auto">
       <div class="tp-search">
@@ -139,6 +148,7 @@ import AppModal from '@/components/AppModal.vue'
 import HoverTooltipText from '@/components/HoverTooltipText.vue'
 import IonIcon from '@/components/IonIcon.vue'
 import ArchiveBackBar from '@/components/ArchiveBackBar.vue'
+import VersionHistoryModal from '@/components/VersionHistoryModal.vue'
 import { trackRecentAccess } from '@/utils/recentAccess'
 import { useNarrow } from '@/composables/useNarrow'
 import { askAssistant } from '@/composables/assistantAsk'
@@ -154,6 +164,7 @@ const message = useMessage()
 const queryClient = useQueryClient()
 const showIconPicker = ref(false)
 const showTablePicker = ref(false)
+const showHistory = ref(false)
 const tablePickerSearch = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const importMode = ref<'new-single' | 'new-batch' | 'append'>('new-single')
@@ -227,6 +238,15 @@ let savedContent = ''
 let savedTitle = ''
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 const noteReady = ref(false)
+
+async function onVersionRestored() {
+  if (!activeNoteId.value) return
+  const id = activeNoteId.value
+  noteReady.value = false
+  await queryClient.invalidateQueries({ queryKey: ['notes', id] })
+  await queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+  await queryClient.invalidateQueries({ queryKey: ['workspace'] })
+}
 
 const { data: activeNote } = useQuery({
   queryKey: computed(() => ['notes', activeNoteId.value]),

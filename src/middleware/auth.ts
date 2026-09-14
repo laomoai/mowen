@@ -82,6 +82,7 @@ export const authMiddleware: MiddlewareHandler<{
   c.set('keyType', row.type)
   c.set('keyScope', row.scope)
   c.set('authMode', 'apiKey')
+  c.set('apiKeyId', row.id)
 
   // 异步更新 last_used_at（不阻塞请求）
   c.executionCtx.waitUntil(

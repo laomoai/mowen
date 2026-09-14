@@ -33,6 +33,7 @@
       <n-button size="small" @click="showFieldPanel = true">
         字段{{ hiddenCount ? `（隐藏 ${hiddenCount}）` : '' }}
       </n-button>
+      <n-button size="small" @click="emit('history')">历史版本</n-button>
       <n-button size="small" quaternary @click="refreshAll" title="刷新" :disabled="refreshing">
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
@@ -208,7 +209,7 @@ const props = defineProps<{
   highlightId?: string | null
 }>()
 
-const emit = defineEmits<{ refresh: []; switchView: [view: string]; highlightHandled: [] }>()
+const emit = defineEmits<{ refresh: []; switchView: [view: string]; highlightHandled: []; history: [] }>()
 
 const message = useMessage()
 const dialog = useDialog()

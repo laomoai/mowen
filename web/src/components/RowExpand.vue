@@ -413,6 +413,7 @@
       </div>
     </div>
   </n-modal>
+
 </template>
 
 <script setup lang="ts">
@@ -448,7 +449,6 @@ const narrow = useNarrow()
 
 const message = useMessage()
 const queryClient = useQueryClient()
-
 const currentIndex = ref(props.initialIndex)
 watch(() => props.initialIndex, (v) => { currentIndex.value = v })
 const detachedRow = ref<Record<string, unknown> | null>(props.initialRow ?? null)

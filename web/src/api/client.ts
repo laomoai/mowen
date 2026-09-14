@@ -95,6 +95,52 @@ export interface RecordRow {
   [key: string]: unknown
 }
 
+export interface RevisionSummary {
+  id: number
+  entity_version: number
+  action: 'update' | 'restore'
+  changed_fields: string[]
+  actor_user_id: number | null
+  actor_api_key_id: number | null
+  auth_mode: string
+  restore_from_id: number | null
+  created_at: number
+}
+
+export interface RevisionChange {
+  field: string
+  before: unknown
+  after: unknown
+}
+
+export interface RevisionDetail extends RevisionSummary {
+  snapshot: Record<string, unknown>
+  changes: RevisionChange[]
+}
+
+export interface TableRevisionSummary {
+  id: number
+  table_version: number
+  target_version: number
+  action: 'insert' | 'update' | 'delete' | 'batch_insert' | 'restore'
+  changed_record_ids: string[]
+  actor_user_id: number | null
+  actor_api_key_id: number | null
+  auth_mode: string
+  restore_from_id: number | null
+  created_at: number
+}
+
+export interface TableRowRevisionChange {
+  record_id: string
+  type: 'added' | 'removed' | 'modified'
+  fields: RevisionChange[]
+}
+
+export interface TableRevisionDetail extends TableRevisionSummary {
+  changes: TableRowRevisionChange[]
+}
+
 export interface PageResult {
   data: RecordRow[]
   meta: {
@@ -151,7 +197,25 @@ export const api = {
 
   /** 更新记录 */
   updateRecord: (tableName: string, id: number, data: Record<string, unknown>) =>
-    http.patch<{ data: { success: boolean; id: number } }>(`/tables/${tableName}/records/${id}`, data).then((r) => r.data.data),
+    http.patch<{ data: { success: boolean; id: number; version: number } }>(`/tables/${tableName}/records/${id}`, data).then((r) => r.data.data),
+
+  getRecordRevisions: (tableName: string, id: number) =>
+    http.get<{ data: RevisionSummary[]; current_version: number }>(`/tables/${tableName}/records/${id}/revisions`).then(r => r.data),
+
+  getRecordRevision: (tableName: string, id: number, revisionId: number) =>
+    http.get<{ data: RevisionDetail }>(`/tables/${tableName}/records/${id}/revisions/${revisionId}`).then(r => r.data.data),
+
+  restoreRecordRevision: (tableName: string, id: number, revisionId: number, baseVersion: number) =>
+    http.post<{ data: { success: boolean; version: number } }>(`/tables/${tableName}/records/${id}/restore`, { revision_id: revisionId, base_version: baseVersion }).then(r => r.data.data),
+
+  getTableRevisions: (tableName: string) =>
+    http.get<{ data: TableRevisionSummary[]; current_version: number }>(`/tables/${tableName}/revisions`).then(r => r.data),
+
+  getTableRevision: (tableName: string, revisionId: number) =>
+    http.get<{ data: TableRevisionDetail }>(`/tables/${tableName}/revisions/${revisionId}`).then(r => r.data.data),
+
+  restoreTableRevision: (tableName: string, revisionId: number, baseVersion: number) =>
+    http.post<{ data: { success: boolean; version: number } }>(`/tables/${tableName}/restore-version`, { revision_id: revisionId, base_version: baseVersion }).then(r => r.data.data),
 
   /** 删除记录 */
   deleteRecord: (tableName: string, id: number) =>
@@ -524,7 +588,16 @@ export const notesApi = {
 
   /** 更新笔记 */
   updateNote: (id: string, data: NoteUpdate) =>
-    http.patch<{ data: { success: boolean } }>(`/notes/${id}`, data).then(r => r.data.data),
+    http.patch<{ data: { success: boolean; version: number } }>(`/notes/${id}`, data).then(r => r.data.data),
+
+  getRevisions: (id: string) =>
+    http.get<{ data: RevisionSummary[]; current_version: number }>(`/notes/${id}/revisions`).then(r => r.data),
+
+  getRevision: (id: string, revisionId: number) =>
+    http.get<{ data: RevisionDetail }>(`/notes/${id}/revisions/${revisionId}`).then(r => r.data.data),
+
+  restoreRevision: (id: string, revisionId: number, baseVersion: number) =>
+    http.post<{ data: { success: boolean; version: number } }>(`/notes/${id}/restore-version`, { revision_id: revisionId, base_version: baseVersion }).then(r => r.data.data),
 
   /** 删除笔记（软删除） */
   deleteNote: (id: string) =>

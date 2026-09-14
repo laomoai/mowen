@@ -33,6 +33,7 @@
       <n-button size="small" quaternary @click="refreshAll" title="刷新" :disabled="refreshing">
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
+      <n-button size="small" @click="emit('history')">历史版本</n-button>
       <n-button size="small" type="primary" @click="openCreate" :disabled="props.isLocked">+ 添加</n-button>
       <n-button size="small" quaternary @click="toggleLock" :title="props.isLocked ? '解锁表格' : '锁定表格'">
         <IonIcon :name="props.isLocked ? 'LockClosedOutline' : 'LockOpenOutline'" :size="14" />
@@ -206,6 +207,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   refresh: []
   switchView: [view: string]
+  history: []
 }>()
 
 const message = useMessage()

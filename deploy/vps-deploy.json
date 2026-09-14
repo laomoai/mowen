@@ -23,7 +23,10 @@
   "data": {
     "writableDirectories": ["/var/lib/mowen"],
     "databaseType": "sqlite",
-    "backupCommand": "sqlite3 /var/lib/mowen/mowen.sqlite \".backup /opt/backups/mowen/mowen.sqlite\"",
+    "backupCommand": "systemctl start mowen-sqlite-backup.service",
+    "backupDirectory": "/opt/backups/mowen-scheduled",
+    "backupSchedule": "hourly via mowen-sqlite-backup.timer",
+    "backupRetention": "manual; automatic deletion is intentionally disabled",
     "integrityCheckCommand": "sqlite3 /var/lib/mowen/mowen.sqlite 'PRAGMA quick_check;'"
   },
   "verification": {

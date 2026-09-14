@@ -5,6 +5,9 @@ import { buildSelectSQL, parseFilters } from '../utils/query-builder'
 import { requireWriteMiddleware } from '../middleware/auth'
 import { getAccessibleNoteIds } from '../utils/note-access'
 import { getFieldMeta } from './fields'
+import type { AppDatabase, AppPreparedStatement } from '../db/sqlite'
+import { diffSnapshots, savePreimage, type RevisionRow } from '../utils/revisions'
+import { diffTableRows, reconstructTableVersion, saveTableChange, type TableRevisionRow } from '../utils/table-revisions'
 
 const records = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -255,6 +258,119 @@ records.get('/:tableName/records/search', async (c) => {
   return c.json({ data: rows })
 })
 
+records.get('/:tableName/revisions', async (c) => {
+  const { tableName } = c.req.param()
+  const allTables = await getUserTables(c.env.DB)
+  if (!allTables.includes(tableName)) {
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+  const meta = await c.env.DB.prepare(`SELECT team_id FROM _meta WHERE table_name = ?`).bind(tableName).first<{ team_id: number | null }>()
+  const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+  const rows = await c.env.DB.prepare(
+    `SELECT id, table_version, action, changed_record_ids_json, actor_user_id, actor_api_key_id,
+            auth_mode, restore_from_id, created_at
+     FROM _table_revisions WHERE team_id = ? AND table_name = ?
+     ORDER BY table_version DESC LIMIT 100`,
+  ).bind(teamId, tableName).all<Omit<TableRevisionRow, 'before_rows_json' | 'after_rows_json'>>()
+  const head = await c.env.DB.prepare(
+    `SELECT current_version FROM _table_revision_heads WHERE team_id = ? AND table_name = ?`,
+  ).bind(teamId, tableName).first<{ current_version: number }>()
+  return c.json({
+    data: rows.results.map(row => ({
+      ...row,
+      target_version: row.table_version - 1,
+      changed_record_ids: JSON.parse(row.changed_record_ids_json),
+    })),
+    current_version: head?.current_version ?? 1,
+  })
+})
+
+records.get('/:tableName/revisions/:revisionId', async (c) => {
+  const { tableName, revisionId } = c.req.param()
+  const allTables = await getUserTables(c.env.DB)
+  if (!allTables.includes(tableName)) {
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+  const meta = await c.env.DB.prepare(`SELECT team_id FROM _meta WHERE table_name = ?`).bind(tableName).first<{ team_id: number | null }>()
+  const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+  const revision = await c.env.DB.prepare(
+    `SELECT * FROM _table_revisions WHERE id = ? AND team_id = ? AND table_name = ?`,
+  ).bind(revisionId, teamId, tableName).first<TableRevisionRow>()
+  if (!revision) return c.json({ error: { code: 'REVISION_NOT_FOUND', message: 'Revision not found' } }, 404)
+  const [currentResult, laterResult] = await Promise.all([
+    c.env.DB.prepare(`SELECT * FROM "${tableName}" ORDER BY id`).all<Record<string, unknown>>(),
+    c.env.DB.prepare(
+      `SELECT * FROM _table_revisions
+       WHERE team_id = ? AND table_name = ? AND table_version >= ?
+       ORDER BY table_version DESC`,
+    ).bind(teamId, tableName, revision.table_version).all<TableRevisionRow>(),
+  ])
+  const historical = reconstructTableVersion(laterResult.results, currentResult.results)
+  return c.json({ data: {
+    ...revision,
+    target_version: revision.table_version - 1,
+    changed_record_ids: JSON.parse(revision.changed_record_ids_json),
+    changes: diffTableRows(historical, currentResult.results),
+  } })
+})
+
+records.post('/:tableName/restore-version', requireWriteMiddleware, async (c) => {
+  const { tableName } = c.req.param()
+  const body = await c.req.json<{ revision_id: number; base_version?: number }>()
+  const [allTables, cols] = await Promise.all([
+    getUserTables(c.env.DB),
+    getTableColumns(c.env.DB, tableName),
+  ])
+  if (!allTables.includes(tableName)) {
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+  const validColumns = new Set(cols.map(col => col.name))
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  try {
+    const version = c.env.DB.transaction((tx) => {
+      const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+      const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+      const revision = tx.first<TableRevisionRow>(
+        `SELECT * FROM _table_revisions WHERE id = ? AND team_id = ? AND table_name = ?`,
+        body.revision_id, teamId, tableName,
+      )
+      if (!revision) throw new Error('REVISION_NOT_FOUND')
+      const head = tx.first<{ current_version: number }>(
+        `SELECT current_version FROM _table_revision_heads WHERE team_id = ? AND table_name = ?`,
+        teamId, tableName,
+      )
+      const currentVersion = head?.current_version ?? 1
+      if (body.base_version !== undefined && currentVersion !== body.base_version) throw new Error('REVISION_CONFLICT')
+      const currentRows = tx.all<Record<string, unknown>>(`SELECT * FROM "${tableName}" ORDER BY id`)
+      const later = tx.all<TableRevisionRow>(
+        `SELECT * FROM _table_revisions
+         WHERE team_id = ? AND table_name = ? AND table_version >= ?
+         ORDER BY table_version DESC`,
+        teamId, tableName, revision.table_version,
+      )
+      const targetRows = reconstructTableVersion(later, currentRows)
+      const nextVersion = saveTableChange(tx, teamId, tableName, currentRows, targetRows, actor, 'restore', revision.id)
+      tx.run(`DELETE FROM "${tableName}"`)
+      for (const row of targetRows) {
+        const fields = Object.keys(row).filter(field => validColumns.has(field))
+        if (!fields.length) continue
+        tx.run(
+          `INSERT INTO "${tableName}" (${fields.map(field => `"${field}"`).join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+          ...fields.map(field => row[field]),
+        )
+      }
+      tx.run(`UPDATE _meta SET row_count = ?, updated_at = unixepoch() WHERE table_name = ?`, targetRows.length, tableName)
+      return nextVersion
+    })
+    return c.json({ data: { success: true, version } })
+  } catch (error) {
+    const message = (error as Error).message
+    if (message === 'REVISION_NOT_FOUND') return c.json({ error: { code: 'REVISION_NOT_FOUND', message: 'Revision not found' } }, 404)
+    if (message === 'REVISION_CONFLICT') return c.json({ error: { code: 'VERSION_CONFLICT', message: 'The table has changed; reload before restoring' } }, 409)
+    throw error
+  }
+})
+
 /**
  * GET /api/tables/:tableName/records/:id
  * 查询单条记录
@@ -349,23 +465,21 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   const optionStmts = buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, [body])
 
   try {
-    const results = await c.env.DB.batch([
-      c.env.DB.prepare(insertSQL).bind(...values),
-      c.env.DB.prepare(
+    const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+    const newRow = c.env.DB.transaction((tx) => {
+      const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+      const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+      const inserted = tx.run(insertSQL, ...values)
+      const row = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, inserted.last_row_id)!
+      tx.run(
         `INSERT INTO _meta (table_name, row_count) VALUES (?, 1)
-         ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + 1, updated_at = unixepoch()`
-      ).bind(tableName),
-      ...optionStmts,
-    ])
-
-    const insertResult = results[0] as QueryResult
-    const newId = insertResult.meta?.last_row_id
-
-    // Construct response from input data + generated id (avoids extra SELECT)
-    const newRow: Record<string, unknown> = { id: newId }
-    for (const f of fields) {
-      newRow[f] = body[f]
-    }
+         ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + 1, updated_at = unixepoch()`,
+        tableName,
+      )
+      saveTableChange(tx, teamId, tableName, [], [row], actor, 'insert')
+      return row
+    })
+    if (optionStmts.length) await c.env.DB.batch(optionStmts)
 
     return c.json({ data: newRow }, 201)
   } catch (err) {
@@ -401,7 +515,7 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const writableCols = cols.filter((c) => c.pk === 0)
   const allowedNames = writableCols.map((c) => c.name)
 
-  const body = await c.req.json<Record<string, unknown>>()
+  const body = await c.req.json<Record<string, unknown> & { base_version?: number }>()
   const fields = Object.keys(body).filter((k) => allowedNames.includes(k))
 
   if (fields.length === 0) {
@@ -412,18 +526,102 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const values = [...fields.map((f) => body[f]), id]
   const optionStmts = buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, [body])
 
-  const updateStmt = c.env.DB
-    .prepare(`UPDATE "${tableName}" SET ${setClause} WHERE id = ?`)
-    .bind(...values)
-
-  const results = await c.env.DB.batch([updateStmt, ...optionStmts])
-  const updateResult = results[0] as QueryResult
-
-  if (updateResult.meta.changes === 0) {
-    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  try {
+    const version = c.env.DB.transaction((tx) => {
+      const existing = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`, id)
+      if (!existing) throw new Error('REVISION_RECORD_NOT_FOUND')
+      const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+      const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+      if (body.base_version !== undefined) {
+        const head = tx.first<{ current_version: number }>(
+          `SELECT current_version FROM _entity_heads WHERE team_id = ? AND entity_type = 'record' AND table_name = ? AND entity_id = ?`,
+          teamId, tableName, id,
+        )
+        if ((head?.current_version ?? 1) !== body.base_version) throw new Error('REVISION_CONFLICT')
+      }
+      const updated = tx.run(`UPDATE "${tableName}" SET ${setClause} WHERE id = ?`, ...values)
+      if (updated.changes === 0) throw new Error('REVISION_RECORD_NOT_FOUND')
+      const after = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, id)!
+      savePreimage(tx, { teamId, entityType: 'record', tableName, entityId: id }, existing, fields, actor)
+      return saveTableChange(tx, teamId, tableName, [existing], [after], actor, 'update')
+    })
+    if (optionStmts.length > 0) await c.env.DB.batch(optionStmts)
+    return c.json({ data: { success: true, id: Number(id), version } })
+  } catch (error) {
+    if ((error as Error).message === 'REVISION_RECORD_NOT_FOUND') {
+      return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
+    }
+    if ((error as Error).message === 'REVISION_CONFLICT') {
+      return c.json({ error: { code: 'VERSION_CONFLICT', message: 'The record has changed; reload before saving' } }, 409)
+    }
+    throw error
   }
+})
 
-  return c.json({ data: { success: true, id: Number(id) } })
+records.get('/:tableName/records/:id/revisions', async (c) => {
+  const { tableName, id } = c.req.param()
+  const meta = await c.env.DB.prepare(`SELECT team_id FROM _meta WHERE table_name = ?`).bind(tableName).first<{ team_id: number | null }>()
+  const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+  const current = await c.env.DB.prepare(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`).bind(id).first<Record<string, unknown>>()
+  if (!current) return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
+  const rows = await c.env.DB.prepare(
+    `SELECT id, entity_version, action, changed_fields_json, actor_user_id, actor_api_key_id,
+            auth_mode, restore_from_id, created_at
+     FROM _revisions WHERE team_id = ? AND entity_type = 'record' AND table_name = ? AND entity_id = ?
+     ORDER BY entity_version DESC LIMIT 100`,
+  ).bind(teamId, tableName, id).all<Omit<RevisionRow, 'snapshot_json'>>()
+  const head = await c.env.DB.prepare(
+    `SELECT current_version FROM _entity_heads WHERE team_id = ? AND entity_type = 'record' AND table_name = ? AND entity_id = ?`,
+  ).bind(teamId, tableName, id).first<{ current_version: number }>()
+  return c.json({ data: rows.results.map(r => ({ ...r, changed_fields: JSON.parse(r.changed_fields_json) })), current_version: head?.current_version ?? 1 })
+})
+
+records.get('/:tableName/records/:id/revisions/:revisionId', async (c) => {
+  const { tableName, id, revisionId } = c.req.param()
+  const meta = await c.env.DB.prepare(`SELECT team_id FROM _meta WHERE table_name = ?`).bind(tableName).first<{ team_id: number | null }>()
+  const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+  const [revision, current] = await Promise.all([
+    c.env.DB.prepare(`SELECT * FROM _revisions WHERE id = ? AND team_id = ? AND entity_type = 'record' AND table_name = ? AND entity_id = ?`).bind(revisionId, teamId, tableName, id).first<RevisionRow>(),
+    c.env.DB.prepare(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`).bind(id).first<Record<string, unknown>>(),
+  ])
+  if (!revision || !current) return c.json({ error: { code: 'REVISION_NOT_FOUND', message: 'Revision not found' } }, 404)
+  const snapshot = JSON.parse(revision.snapshot_json) as Record<string, unknown>
+  return c.json({ data: { ...revision, snapshot, changes: diffSnapshots(snapshot, current) } })
+})
+
+records.post('/:tableName/records/:id/restore', requireWriteMiddleware, async (c) => {
+  const { tableName, id } = c.req.param()
+  const body = await c.req.json<{ revision_id: number; base_version?: number }>()
+  const cols = await getTableColumns(c.env.DB, tableName)
+  const writable = cols.filter(col => col.pk === 0).map(col => col.name)
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  try {
+    const version = c.env.DB.transaction((tx) => {
+      const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+      const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+      const current = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`, id)
+      const revision = tx.first<RevisionRow>(`SELECT * FROM _revisions WHERE id = ? AND team_id = ? AND entity_type = 'record' AND table_name = ? AND entity_id = ?`, body.revision_id, teamId, tableName, id)
+      if (!current || !revision) throw new Error('REVISION_NOT_FOUND')
+      const head = tx.first<{ current_version: number }>(`SELECT current_version FROM _entity_heads WHERE team_id = ? AND entity_type = 'record' AND table_name = ? AND entity_id = ?`, teamId, tableName, id)
+      if (body.base_version !== undefined && (head?.current_version ?? 1) !== body.base_version) throw new Error('REVISION_CONFLICT')
+      const snapshot = JSON.parse(revision.snapshot_json) as Record<string, unknown>
+      const fields = writable.filter(field => Object.hasOwn(snapshot, field))
+      if (fields.length === 0) throw new Error('REVISION_SCHEMA_MISMATCH')
+      const next = savePreimage(tx, { teamId, entityType: 'record', tableName, entityId: id }, current, fields, actor, 'restore', revision.id)
+      tx.run(`UPDATE "${tableName}" SET ${fields.map(f => `"${f}" = ?`).join(', ')} WHERE id = ?`, ...fields.map(f => snapshot[f]), id)
+      const after = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, id)!
+      saveTableChange(tx, teamId, tableName, [current], [after], actor, 'update')
+      return next
+    })
+    return c.json({ data: { success: true, id: Number(id), version } })
+  } catch (error) {
+    const message = (error as Error).message
+    if (message === 'REVISION_NOT_FOUND') return c.json({ error: { code: 'REVISION_NOT_FOUND', message: 'Revision not found' } }, 404)
+    if (message === 'REVISION_CONFLICT') return c.json({ error: { code: 'VERSION_CONFLICT', message: 'The record has changed; reload before restoring' } }, 409)
+    if (message === 'REVISION_SCHEMA_MISMATCH') return c.json({ error: { code: 'SCHEMA_MISMATCH', message: 'No restorable fields remain in the current table schema' } }, 409)
+    throw error
+  }
 })
 
 /**
@@ -439,27 +637,27 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
-  // 获取完整记录用于存入回收站
-  const existing = await c.env.DB
-    .prepare(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`)
-    .bind(id)
-    .first()
-
-  if (!existing) {
-    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  try {
+    c.env.DB.transaction((tx) => {
+      const existing = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`, id)
+      if (!existing) throw new Error('RECORD_NOT_FOUND')
+      const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+      const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+      tx.run(
+        `INSERT INTO _trash (table_name, record_id, record_data, owner_id, team_id) VALUES (?, ?, ?, ?, ?)`,
+        tableName, id, JSON.stringify(existing), c.get('userId') ?? null, c.get('teamId') ?? null,
+      )
+      tx.run(`DELETE FROM "${tableName}" WHERE id = ?`, id)
+      tx.run(`UPDATE _meta SET row_count = MAX(row_count - 1, 0), updated_at = unixepoch() WHERE table_name = ?`, tableName)
+      saveTableChange(tx, teamId, tableName, [existing], [], actor, 'delete')
+    })
+  } catch (error) {
+    if ((error as Error).message === 'RECORD_NOT_FOUND') {
+      return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
+    }
+    throw error
   }
-
-  await c.env.DB.batch([
-    // 存入回收站
-    c.env.DB.prepare(
-      `INSERT INTO _trash (table_name, record_id, record_data, owner_id, team_id) VALUES (?, ?, ?, ?, ?)`
-    ).bind(tableName, id, JSON.stringify(existing), c.get('userId') ?? null, c.get('teamId') ?? null),
-    // 从原表删除
-    c.env.DB.prepare(`DELETE FROM "${tableName}" WHERE id = ?`).bind(id),
-    c.env.DB.prepare(
-      `UPDATE _meta SET row_count = MAX(row_count - 1, 0), updated_at = unixepoch() WHERE table_name = ?`
-    ).bind(tableName),
-  ])
 
   return c.json({ data: { success: true } })
 })
@@ -492,7 +690,7 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
   const rows = body.records.slice(0, 500) // 单次最多 500 条
 
   const requiredCols = writableCols.filter((c) => c.notnull === 1 && c.dflt_value === null)
-  const stmts: AppPreparedStatement[] = []
+  const inserts: Array<{ sql: string; values: unknown[] }> = []
 
   for (let idx = 0; idx < rows.length; idx++) {
     const row = rows[idx]
@@ -517,23 +715,26 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
     const placeholders = fields.map(() => '?').join(', ')
     const columnList = fields.map((f) => `"${f}"`).join(', ')
     const insertSQL = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`
-    stmts.push(
-      c.env.DB.prepare(insertSQL).bind(...fields.map((f) => row[f]))
-    )
+    inserts.push({ sql: insertSQL, values: fields.map((f) => row[f]) })
   }
-
-  // 追加计数更新
-  stmts.push(
-    c.env.DB.prepare(
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  c.env.DB.transaction((tx) => {
+    const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+    const teamId = c.get('teamId') ?? meta?.team_id ?? 0
+    const insertedRows: Record<string, unknown>[] = []
+    for (const insert of inserts) {
+      const result = tx.run(insert.sql, ...insert.values)
+      insertedRows.push(tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, result.last_row_id)!)
+    }
+    tx.run(
       `INSERT INTO _meta (table_name, row_count) VALUES (?, ?)
-       ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + ?, updated_at = unixepoch()`
-    ).bind(tableName, rows.length, rows.length)
-  )
-
-  // 自动补全 select 选项（跨所有行收集新值，每个字段只生成一条更新语句）
-  stmts.push(...buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, rows))
-
-  await c.env.DB.batch(stmts)
+       ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + ?, updated_at = unixepoch()`,
+      tableName, rows.length, rows.length,
+    )
+    saveTableChange(tx, teamId, tableName, [], insertedRows, actor, 'batch_insert')
+  })
+  const optionStmts = buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, rows)
+  if (optionStmts.length) await c.env.DB.batch(optionStmts)
 
   return c.json({ data: { inserted: rows.length } }, 201)
 })

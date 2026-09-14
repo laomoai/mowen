@@ -114,7 +114,7 @@ function openApiSpec(serverUrl: string) {
     openapi: '3.0.0',
     info: {
       title: '墨问 MoWen API',
-      version: '2.2.0',
+      version: '2.4.0',
       description: `墨问 HTTP API。Agent / 小程序使用 \`X-API-Key\`；Web 管理接口使用登录后的 Cookie Session。
 
 表格用 \`name\`（如 tbl_abc123），显示名是 \`title\`；写记录用字段 \`column_name\`。
@@ -737,6 +737,64 @@ Skill：\`/agent/mowen/SKILL.md\``,
               },
             },
           },
+        },
+      },
+      '/api/tables/{tableName}/revisions': {
+        get: {
+          summary: 'List whole-table data versions',
+          description: 'Each data mutation creates an incremental table version. Table schema and field settings are not versioned.',
+          parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'Table revision summaries and current table version' } },
+        },
+      },
+      '/api/tables/{tableName}/revisions/{revisionId}': {
+        get: {
+          summary: 'Compare a whole-table version with current data',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'revisionId', in: 'path', required: true, schema: { type: 'integer' } },
+          ],
+          responses: { '200': { description: 'Record and field differences between the selected whole-table version and current data' } },
+        },
+      },
+      '/api/tables/{tableName}/restore-version': {
+        post: {
+          summary: 'Restore all table data to a previous version',
+          description: 'Restores the complete row set while leaving table schema unchanged. The pre-restore state is saved as a new reversible version.',
+          parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'Whole table restored' }, '409': { description: 'Version conflict' } },
+        },
+      },
+      '/api/tables/{tableName}/records/{id}/revisions': {
+        get: {
+          summary: 'List record history versions',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: { '200': { description: 'Revision summaries and current version' } },
+        },
+      },
+      '/api/tables/{tableName}/records/{id}/revisions/{revisionId}': {
+        get: {
+          summary: 'Get record history snapshot and field diff',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'revisionId', in: 'path', required: true, schema: { type: 'integer' } },
+          ],
+          responses: { '200': { description: 'Snapshot and changes compared with the current record' }, '404': { description: 'Revision not found' } },
+        },
+      },
+      '/api/tables/{tableName}/records/{id}/restore': {
+        post: {
+          summary: 'Restore a record history version',
+          description: 'Saves the current value as a new history entry before restoring, so the operation is reversible.',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: { '200': { description: 'Restored successfully' }, '409': { description: 'Version conflict or schema mismatch' } },
         },
       },
       '/api/tables/{tableName}/export': {
@@ -1374,6 +1432,31 @@ Skill：\`/agent/mowen/SKILL.md\``,
             '200': { description: 'Restored successfully' },
             '404': { description: 'Deleted note not found' },
           },
+        },
+      },
+      '/api/notes/{id}/revisions': {
+        get: {
+          summary: 'List note history versions',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'Revision summaries and current version' } },
+        },
+      },
+      '/api/notes/{id}/revisions/{revisionId}': {
+        get: {
+          summary: 'Get note history snapshot and field diff',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'revisionId', in: 'path', required: true, schema: { type: 'integer' } },
+          ],
+          responses: { '200': { description: 'Snapshot and changes compared with the current note' }, '404': { description: 'Revision not found' } },
+        },
+      },
+      '/api/notes/{id}/restore-version': {
+        post: {
+          summary: 'Restore a note history version',
+          description: 'Saves the current value as a new history entry before restoring, so the operation is reversible.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'Restored successfully' }, '409': { description: 'Version conflict' } },
         },
       },
       '/api/notes/{id}/permanent': {

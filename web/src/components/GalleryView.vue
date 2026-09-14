@@ -29,6 +29,7 @@
       <n-button size="small" @click="showFilterBar = !showFilterBar">
         筛选{{ activeFilters.length ? ` (${activeFilters.length})` : '' }}
       </n-button>
+      <n-button size="small" @click="emit('history')">历史版本</n-button>
       <n-button size="small" quaternary @click="refreshAll" title="刷新" :disabled="refreshing">
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
@@ -217,6 +218,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   refresh: []
   switchView: [view: string]
+  history: []
 }>()
 
 const message = useMessage()

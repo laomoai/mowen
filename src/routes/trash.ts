@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware } from '../middleware/auth'
 import { getUserTables, getTableColumns } from '../utils/schema-cache'
+import { saveTableChange } from '../utils/table-revisions'
 
 const RETENTION_DAYS = 30
 
@@ -272,15 +273,17 @@ trash.post('/:id/restore', async (c) => {
   const values = fields.map(f => record[f])
 
   try {
-    await c.env.DB.batch([
-      c.env.DB.prepare(
-        `INSERT INTO "${row.table_name}" (${columnList}) VALUES (${placeholders})`
-      ).bind(...values),
-      c.env.DB.prepare(`DELETE FROM _trash WHERE id = ?`).bind(id),
-      c.env.DB.prepare(
-        `UPDATE _meta SET row_count = row_count + 1, updated_at = unixepoch() WHERE table_name = ?`
-      ).bind(row.table_name),
-    ])
+    c.env.DB.transaction((tx) => {
+      tx.run(`INSERT INTO "${row.table_name}" (${columnList}) VALUES (${placeholders})`, ...values)
+      tx.run(`DELETE FROM _trash WHERE id = ?`, id)
+      tx.run(`UPDATE _meta SET row_count = row_count + 1, updated_at = unixepoch() WHERE table_name = ?`, row.table_name)
+      const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, row.table_name)
+      const revisionTeamId = teamId ?? meta?.team_id ?? 0
+      const restored = tx.first<Record<string, unknown>>(`SELECT * FROM "${row.table_name}" WHERE id = ?`, record.id) ?? record
+      saveTableChange(tx, revisionTeamId, row.table_name, [], [restored], {
+        userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode'),
+      }, 'insert')
+    })
   } catch (err) {
     const msg = (err as Error).message ?? ''
     if (msg.includes('UNIQUE constraint')) {

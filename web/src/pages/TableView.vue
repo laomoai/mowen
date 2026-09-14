@@ -20,6 +20,7 @@
       @refresh="refetchTables"
       @switch-view="switchView"
       @highlight-handled="clearHighlight"
+      @history="showHistory = true"
     />
     <GalleryView
       v-else-if="fields && displayMode === 'gallery'"
@@ -31,6 +32,7 @@
       :is-locked="isTableLocked"
       @refresh="refetchTables"
       @switch-view="switchView"
+      @history="showHistory = true"
     />
     <ChartView
       v-else-if="fields && displayMode === 'chart'"
@@ -40,6 +42,7 @@
       :table-icon="tableIcon"
       :total-count="totalCount"
       @switch-view="switchView"
+      @history="showHistory = true"
     />
     <KanbanView
       v-else-if="fields && displayMode === 'kanban'"
@@ -51,6 +54,13 @@
       :is-locked="isTableLocked"
       @refresh="refetchTables"
       @switch-view="switchView"
+      @history="showHistory = true"
+    />
+    <TableHistoryModal
+      v-model:show="showHistory"
+      :table-name="tableName"
+      :field-labels="fieldLabels"
+      @restored="onTableRestored"
     />
   </div>
 </template>
@@ -68,6 +78,7 @@ import DataGrid from '@/components/DataGrid.vue'
 import GalleryView from '@/components/GalleryView.vue'
 import ChartView from '@/components/ChartView.vue'
 import KanbanView from '@/components/KanbanView.vue'
+import TableHistoryModal from '@/components/TableHistoryModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -75,6 +86,7 @@ const queryClient = useQueryClient()
 
 const tableName = computed(() => route.params.tableName as string)
 const highlightId = ref<string | null>((route.query.highlight as string) ?? null)
+const showHistory = ref(false)
 type ViewMode = 'grid' | 'gallery' | 'chart' | 'kanban'
 
 function getStoredViewMode(table: string): ViewMode {
@@ -151,6 +163,14 @@ const isTableLocked = computed(() =>
   !!(tableSchema.value?.is_locked || tableSchema.value?.archived_at
     || tablesData.value?.find(t => t.name === tableName.value)?.is_locked)
 )
+
+const fieldLabels = computed(() => Object.fromEntries((fields.value ?? []).map(field => [field.column_name, field.title])))
+
+function onTableRestored() {
+  queryClient.invalidateQueries({ queryKey: ['records', tableName.value] })
+  queryClient.invalidateQueries({ queryKey: ['tables'] })
+  queryClient.invalidateQueries({ queryKey: ['dashboard', tableName.value] })
+}
 
 watch([tableTitle, tableIcon, tableName], ([title, icon, name]) => {
   const display = title || name

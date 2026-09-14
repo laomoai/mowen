@@ -304,6 +304,10 @@ export async function hardDeleteSpace(db: AppDatabase, teamId: number) {
 
   // Step 4: Delete space-scoped system records (no more FK deps on these)
   await db.batch([
+    db.prepare(`DELETE FROM _table_revisions WHERE team_id = ?`).bind(teamId),
+    db.prepare(`DELETE FROM _table_revision_heads WHERE team_id = ?`).bind(teamId),
+    db.prepare(`DELETE FROM _revisions WHERE team_id = ?`).bind(teamId),
+    db.prepare(`DELETE FROM _entity_heads WHERE team_id = ?`).bind(teamId),
     db.prepare(`DELETE FROM _notes WHERE team_id = ?`).bind(teamId),
     db.prepare(`DELETE FROM _groups WHERE team_id = ?`).bind(teamId),
     db.prepare(`DELETE FROM _dashboards WHERE team_id = ?`).bind(teamId),

@@ -3,6 +3,8 @@ import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware, teamFilter } from '../middleware/auth'
 import { canAccessNote, getAccessibleNoteIds } from '../utils/note-access'
 import { canonicalNodeId, ensureNoteNode, getNode, removeNodeByRef, updateNodeTitleByRef } from '../utils/workspace'
+import type { AppDatabase } from '../db/sqlite'
+import { diffSnapshots, ensureHead, savePreimage, type RevisionRow } from '../utils/revisions'
 
 const notes = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -421,6 +423,7 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     parent_id?: string | null
     sort_order?: number
     is_locked?: boolean
+    base_version?: number
   }>()
   const teamId = c.get('teamId')
   const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
@@ -525,20 +528,133 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     params.push(teamId)
   }
 
-  const result = await c.env.DB.prepare(sql).bind(...params).run()
+  const changedFields = Object.keys(body).filter(key => key !== 'base_version')
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  try {
+    const version = c.env.DB.transaction((tx) => {
+      let selectSql = `SELECT * FROM _notes WHERE id = ? AND deleted_at IS NULL`
+      const selectParams: unknown[] = [id]
+      if (teamId !== undefined) { selectSql += ` AND team_id = ?`; selectParams.push(teamId) }
+      const snapshot = tx.first<Record<string, unknown>>(selectSql, ...selectParams)
+      if (!snapshot) throw new Error('REVISION_NOTE_NOT_FOUND')
+      const revisionTeamId = teamId ?? Number(snapshot.team_id ?? 0)
+      const head = tx.first<{ current_version: number }>(
+        `SELECT current_version FROM _entity_heads WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`,
+        revisionTeamId, id,
+      )
+      if (body.base_version !== undefined && (head?.current_version ?? 1) !== body.base_version) throw new Error('REVISION_CONFLICT')
+      const key = { teamId: revisionTeamId, entityType: 'note' as const, entityId: id }
+      let nextVersion: number
+      if (changedFields.length === 1 && changedFields[0] === 'content') {
+        const latest = tx.first<{ created_at: number; actor_user_id: number | null; actor_api_key_id: number | null; auth_mode: string; changed_fields_json: string }>(
+          `SELECT created_at, actor_user_id, actor_api_key_id, auth_mode, changed_fields_json
+           FROM _revisions WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?
+           ORDER BY entity_version DESC LIMIT 1`, revisionTeamId, id,
+        )
+        const sameAutosaveWindow = latest && latest.created_at >= Math.floor(Date.now() / 1000) - 60
+          && latest.actor_user_id === (actor.userId ?? null)
+          && latest.actor_api_key_id === (actor.apiKeyId ?? null)
+          && latest.auth_mode === actor.authMode
+          && latest.changed_fields_json === '["content"]'
+        nextVersion = sameAutosaveWindow ? ensureHead(tx, key) : savePreimage(tx, key, snapshot, changedFields, actor)
+      } else {
+        nextVersion = savePreimage(tx, key, snapshot, changedFields, actor)
+      }
+      const result = tx.run(sql, ...params)
+      if (result.changes === 0) throw new Error('REVISION_NOTE_NOT_FOUND')
+      return nextVersion
+    })
 
-  if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
-  }
+    if (body.title !== undefined) {
+      await updateNodeTitleByRef(c.env.DB, 'note', id, body.title.trim() || 'Untitled')
+    }
+    if (body.parent_id) {
+      await removeNodeByRef(c.env.DB, 'note', id)
+    }
 
-  if (body.title !== undefined) {
-    await updateNodeTitleByRef(c.env.DB, 'note', id, body.title.trim() || 'Untitled')
+    return c.json({ data: { success: true, version } })
+  } catch (error) {
+    if ((error as Error).message === 'REVISION_NOTE_NOT_FOUND') {
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
+    }
+    if ((error as Error).message === 'REVISION_CONFLICT') {
+      return c.json({ error: { code: 'VERSION_CONFLICT', message: '笔记已被其他修改，请刷新后再保存' } }, 409)
+    }
+    throw error
   }
-  if (body.parent_id) {
-    await removeNodeByRef(c.env.DB, 'note', id)
-  }
+})
 
-  return c.json({ data: { success: true } })
+notes.get('/:id/revisions', async (c) => {
+  const { id } = c.req.param()
+  const allowed = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  if (!canAccessNote(allowed, id)) return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  const { clause, params } = teamFilter(c.get('teamId'))
+  const note = await c.env.DB.prepare(`SELECT team_id FROM _notes WHERE id = ? AND ${clause} AND deleted_at IS NULL`).bind(id, ...params).first<{ team_id: number | null }>()
+  if (!note) return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
+  const teamId = c.get('teamId') ?? note.team_id ?? 0
+  const rows = await c.env.DB.prepare(
+    `SELECT id, entity_version, action, changed_fields_json, actor_user_id, actor_api_key_id,
+            auth_mode, restore_from_id, created_at
+     FROM _revisions WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?
+     ORDER BY entity_version DESC LIMIT 100`,
+  ).bind(teamId, id).all<Omit<RevisionRow, 'snapshot_json'>>()
+  const head = await c.env.DB.prepare(`SELECT current_version FROM _entity_heads WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`).bind(teamId, id).first<{ current_version: number }>()
+  return c.json({ data: rows.results.map(row => ({ ...row, changed_fields: JSON.parse(row.changed_fields_json) })), current_version: head?.current_version ?? 1 })
+})
+
+notes.get('/:id/revisions/:revisionId', async (c) => {
+  const { id, revisionId } = c.req.param()
+  const allowed = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  if (!canAccessNote(allowed, id)) return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  const { clause, params } = teamFilter(c.get('teamId'))
+  const note = await c.env.DB.prepare(`SELECT * FROM _notes WHERE id = ? AND ${clause} AND deleted_at IS NULL`).bind(id, ...params).first<Record<string, unknown>>()
+  if (!note) return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
+  const teamId = c.get('teamId') ?? Number(note.team_id ?? 0)
+  const revision = await c.env.DB.prepare(`SELECT * FROM _revisions WHERE id = ? AND team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`).bind(revisionId, teamId, id).first<RevisionRow>()
+  if (!revision) return c.json({ error: { code: 'REVISION_NOT_FOUND', message: 'Revision not found' } }, 404)
+  const snapshot = JSON.parse(revision.snapshot_json) as Record<string, unknown>
+  return c.json({ data: { ...revision, snapshot, changes: diffSnapshots(snapshot, note) } })
+})
+
+notes.post('/:id/restore-version', requireWriteMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const body = await c.req.json<{ revision_id: number; base_version?: number }>()
+  const allowed = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  if (!canAccessNote(allowed, id)) return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  const teamId = c.get('teamId')
+  const actor = { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }
+  // Workspace placement is managed by _workspace_nodes / parent rules, not by content history.
+  const restorable = ['title', 'content', 'icon', 'is_locked', 'cover', 'description']
+  try {
+    const result = c.env.DB.transaction((tx) => {
+      let selectSql = `SELECT * FROM _notes WHERE id = ? AND deleted_at IS NULL`
+      const selectParams: unknown[] = [id]
+      if (teamId !== undefined) { selectSql += ` AND team_id = ?`; selectParams.push(teamId) }
+      const current = tx.first<Record<string, unknown>>(selectSql, ...selectParams)
+      if (!current || current.archived_at) throw new Error('REVISION_NOTE_NOT_FOUND')
+      const revisionTeamId = teamId ?? Number(current.team_id ?? 0)
+      const revision = tx.first<RevisionRow>(`SELECT * FROM _revisions WHERE id = ? AND team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`, body.revision_id, revisionTeamId, id)
+      if (!revision) throw new Error('REVISION_NOT_FOUND')
+      const head = tx.first<{ current_version: number }>(`SELECT current_version FROM _entity_heads WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`, revisionTeamId, id)
+      if (body.base_version !== undefined && (head?.current_version ?? 1) !== body.base_version) throw new Error('REVISION_CONFLICT')
+      const snapshot = JSON.parse(revision.snapshot_json) as Record<string, unknown>
+      const fields = restorable.filter(field => Object.hasOwn(snapshot, field))
+      const version = savePreimage(tx, { teamId: revisionTeamId, entityType: 'note', entityId: id }, current, fields, actor, 'restore', revision.id)
+      const updateParams = [...fields.map(field => snapshot[field]), id]
+      let updateSql = `UPDATE _notes SET ${fields.map(field => `"${field}" = ?`).join(', ')}, updated_at = unixepoch() WHERE id = ?`
+      if (teamId !== undefined) { updateSql += ` AND team_id = ?`; updateParams.push(teamId) }
+      tx.run(updateSql, ...updateParams)
+      return { version, title: String(snapshot.title ?? 'Untitled') }
+    })
+    await updateNodeTitleByRef(c.env.DB, 'note', id, result.title)
+    return c.json({ data: { success: true, version: result.version } })
+  } catch (error) {
+    const message = (error as Error).message
+    if (message === 'REVISION_NOTE_NOT_FOUND') return c.json({ error: { code: 'NOT_FOUND', message: '笔记不存在、已归档或已删除' } }, 404)
+    if (message === 'REVISION_NOT_FOUND') return c.json({ error: { code: 'REVISION_NOT_FOUND', message: '历史版本不存在' } }, 404)
+    if (message === 'REVISION_CONFLICT') return c.json({ error: { code: 'VERSION_CONFLICT', message: '笔记已被其他修改，请刷新后再恢复' } }, 409)
+    throw error
+  }
 })
 
 /**
@@ -713,6 +829,14 @@ notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
   }
 
+  let lookupSql = `SELECT team_id FROM _notes WHERE id = ? AND deleted_at IS NOT NULL`
+  const lookupParams: unknown[] = [id]
+  if (teamId !== undefined) { lookupSql += ` AND team_id = ?`; lookupParams.push(teamId) }
+  const deletedNote = await c.env.DB.prepare(lookupSql).bind(...lookupParams).first<{ team_id: number | null }>()
+  if (!deletedNote) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
+  }
+  const revisionTeamId = teamId ?? deletedNote.team_id ?? 0
   let sql = `DELETE FROM _notes WHERE id = ? AND deleted_at IS NOT NULL`
   const params: unknown[] = [id]
   if (teamId !== undefined) {
@@ -720,10 +844,11 @@ notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
     params.push(teamId)
   }
 
-  const result = await c.env.DB.prepare(sql).bind(...params).run()
-  if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
-  }
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM _revisions WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`).bind(revisionTeamId, id),
+    c.env.DB.prepare(`DELETE FROM _entity_heads WHERE team_id = ? AND entity_type = 'note' AND table_name = '' AND entity_id = ?`).bind(revisionTeamId, id),
+    c.env.DB.prepare(sql).bind(...params),
+  ])
 
   await removeNodeByRef(c.env.DB, 'note', id)
   return c.json({ data: { success: true } })

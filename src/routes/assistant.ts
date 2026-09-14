@@ -12,6 +12,8 @@ import {
   updateThreadMeta,
   type StoredMsg,
 } from '../utils/assistant-memory'
+import { saveTableChange } from '../utils/table-revisions'
+import type { RevisionActor } from '../utils/revisions'
 
 const assistant = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -380,44 +382,64 @@ async function getRecord(db: Env['DB'], tableName: string, id: number) {
   return { table_name: tableName, record: rowForDisplay(fields, row) }
 }
 
-async function insertRecord(db: Env['DB'], tableName: string, values: Record<string, unknown>) {
+async function insertRecord(db: Env['DB'], tableName: string, values: Record<string, unknown>, actor: RevisionActor, activeTeamId?: number) {
   await assertUserTable(db, tableName)
   const fields = await loadFields(db, tableName)
   const { mapped, unknown } = mapValuesToColumns(fields, values)
   const cols = Object.keys(mapped).filter((k) => k !== 'id' && isValidIdentifier(k))
   if (cols.length === 0) return { error: '没有可写入的字段', unknown }
   const sql = `INSERT INTO "${tableName}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`
-  const result = await db.prepare(sql).bind(...cols.map((c) => mapped[c])).run()
-  await db.prepare(
-    `INSERT INTO _meta (table_name, row_count) VALUES (?, 1)
-     ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + 1, updated_at = unixepoch()`,
-  ).bind(tableName).run()
-  const id = Number(result.meta.last_row_id || 0)
-  return { ok: true, id, unknown, record: rowForDisplay(fields, { id, ...mapped }) }
+  const row = db.transaction((tx) => {
+    const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+    const teamId = activeTeamId ?? meta?.team_id ?? 0
+    const result = tx.run(sql, ...cols.map((c) => mapped[c]))
+    const inserted = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, result.last_row_id)!
+    tx.run(
+      `INSERT INTO _meta (table_name, row_count) VALUES (?, 1)
+       ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + 1, updated_at = unixepoch()`,
+      tableName,
+    )
+    saveTableChange(tx, teamId, tableName, [], [inserted], actor, 'insert')
+    return inserted
+  })
+  return { ok: true, id: Number(row.id), unknown, record: rowForDisplay(fields, row) }
 }
 
-async function updateRecord(db: Env['DB'], tableName: string, id: number, values: Record<string, unknown>) {
+async function updateRecord(db: Env['DB'], tableName: string, id: number, values: Record<string, unknown>, actor: RevisionActor, activeTeamId?: number) {
   await assertUserTable(db, tableName)
   const fields = await loadFields(db, tableName)
   const { mapped, unknown } = mapValuesToColumns(fields, values)
   const cols = Object.keys(mapped).filter((k) => k !== 'id' && isValidIdentifier(k))
   if (cols.length === 0) return { error: '没有可更新的字段', unknown }
   const sql = `UPDATE "${tableName}" SET ${cols.map((c) => `"${c}" = ?`).join(', ')} WHERE id = ?`
-  const result = await db.prepare(sql).bind(...cols.map((c) => mapped[c]), id).run()
-  if (!result.meta.changes) return { error: '找不到这条记录' }
+  const changed = db.transaction((tx) => {
+    const before = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, id)
+    if (!before) return false
+    const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+    const teamId = activeTeamId ?? meta?.team_id ?? 0
+    tx.run(sql, ...cols.map((c) => mapped[c]), id)
+    const after = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, id)!
+    saveTableChange(tx, teamId, tableName, [before], [after], actor, 'update')
+    return true
+  })
+  if (!changed) return { error: '找不到这条记录' }
   return { ok: true, id, unknown }
 }
 
-async function deleteRecord(db: Env['DB'], tableName: string, id: number, userId: number | null, teamId: number | null) {
+async function deleteRecord(db: Env['DB'], tableName: string, id: number, userId: number | null, teamId: number | null, actor: RevisionActor) {
   await assertUserTable(db, tableName)
-  const existing = await db.prepare(`SELECT * FROM "${tableName}" WHERE id = ?`).bind(id).first()
-  if (!existing) return { error: '找不到这条记录' }
-  await db.batch([
-    db.prepare(`INSERT INTO _trash (table_name, record_id, record_data, owner_id, team_id) VALUES (?, ?, ?, ?, ?)`)
-      .bind(tableName, id, JSON.stringify(existing), userId, teamId),
-    db.prepare(`DELETE FROM "${tableName}" WHERE id = ?`).bind(id),
-    db.prepare(`UPDATE _meta SET row_count = MAX(row_count - 1, 0), updated_at = unixepoch() WHERE table_name = ?`).bind(tableName),
-  ])
+  const deleted = db.transaction((tx) => {
+    const existing = tx.first<Record<string, unknown>>(`SELECT * FROM "${tableName}" WHERE id = ?`, id)
+    if (!existing) return false
+    const meta = tx.first<{ team_id: number | null }>(`SELECT team_id FROM _meta WHERE table_name = ?`, tableName)
+    const revisionTeamId = teamId ?? meta?.team_id ?? 0
+    tx.run(`INSERT INTO _trash (table_name, record_id, record_data, owner_id, team_id) VALUES (?, ?, ?, ?, ?)`, tableName, id, JSON.stringify(existing), userId, teamId)
+    tx.run(`DELETE FROM "${tableName}" WHERE id = ?`, id)
+    tx.run(`UPDATE _meta SET row_count = MAX(row_count - 1, 0), updated_at = unixepoch() WHERE table_name = ?`, tableName)
+    saveTableChange(tx, revisionTeamId, tableName, [existing], [], actor, 'delete')
+    return true
+  })
+  if (!deleted) return { error: '找不到这条记录' }
   return { ok: true, id }
 }
 
@@ -782,17 +804,17 @@ assistant.post('/chat', async (c) => {
         } else if (call.function.name === 'insert_record') {
           assertWritable(c)
           const name = resolveTableName(args.table_name, ctx?.table)
-          result = await insertRecord(c.env.DB, name, args.values || {})
+          result = await insertRecord(c.env.DB, name, args.values || {}, { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }, c.get('teamId'))
           if ((result as { ok?: boolean }).ok) mutated = true
         } else if (call.function.name === 'update_record') {
           assertWritable(c)
           const name = resolveTableName(args.table_name, ctx?.table)
-          result = await updateRecord(c.env.DB, name, Number(args.id), args.values || {})
+          result = await updateRecord(c.env.DB, name, Number(args.id), args.values || {}, { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') }, c.get('teamId'))
           if ((result as { ok?: boolean }).ok) mutated = true
         } else if (call.function.name === 'delete_record') {
           assertWritable(c)
           const name = resolveTableName(args.table_name, ctx?.table)
-          result = await deleteRecord(c.env.DB, name, Number(args.id), c.get('userId') ?? null, c.get('teamId') ?? null)
+          result = await deleteRecord(c.env.DB, name, Number(args.id), c.get('userId') ?? null, c.get('teamId') ?? null, { userId: c.get('userId'), apiKeyId: c.get('apiKeyId'), authMode: c.get('authMode') })
           if ((result as { ok?: boolean }).ok) mutated = true
         } else if (call.function.name === 'move_node') {
           assertWritable(c)

@@ -60,6 +60,7 @@ export type AuthVariables = {
   allowedNoteRootIds: string[] | null
   user?: SessionUser
   userId?: number               // _users.id，ADMIN_KEY 时为 undefined
+  apiKeyId?: number             // _api_keys.id，用于审计历史版本
   userRole?: 'admin' | 'user'   // _users.role
   spaceRole?: 'owner' | 'admin' | 'member' | 'viewer'
   teamId?: number               // _users.team_id，ADMIN_KEY 时为 undefined

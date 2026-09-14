@@ -1,0 +1,12 @@
+[Unit]
+Description=Run MoWen SQLite backup hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=2min
+AccuracySec=1s
+Unit=mowen-sqlite-backup.service
+
+[Install]
+WantedBy=timers.target

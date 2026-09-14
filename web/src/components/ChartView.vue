@@ -18,6 +18,7 @@
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} 条</span>
       <div style="flex:1" />
       <span v-if="loadingRecords" class="loading-hint">加载中…</span>
+      <button class="history-toolbar-btn" type="button" @click="emit('history')">历史版本</button>
       <div class="view-switcher">
         <button class="view-btn" title="表格视图" @click="emit('switchView', 'grid')">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
@@ -361,7 +362,7 @@ const props = defineProps<{
   tableIcon?: string | null
   totalCount: number | null
 }>()
-const emit = defineEmits<{ switchView: [view: string] }>()
+const emit = defineEmits<{ switchView: [view: string]; history: [] }>()
 const copiedTableName = ref(false)
 
 function copyTableName() {
@@ -862,6 +863,8 @@ onUnmounted(() => {
 .add-menu-desc { font-size: 11px; color: #a3a19d; margin-top: 1px; }
 
 /* 视图切换 */
+.history-toolbar-btn { height: 28px; padding: 0 10px; border: 1px solid #e0e0de; border-radius: 3px; background: #fff; color: #37352f; cursor: pointer; font: 13px/1 inherit; }
+.history-toolbar-btn:hover { background: rgba(55,53,47,0.06); }
 .view-switcher { display: flex; gap: 2px; }
 .view-btn {
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;

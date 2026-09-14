@@ -26,6 +26,13 @@ export type AppDatabase = {
   prepare: (query: string) => AppPreparedStatement
   batch: <T = unknown>(statements: AppPreparedStatement[]) => Promise<QueryResult<T>[]>
   exec: (query: string) => Promise<QueryResult>
+  transaction: <T>(callback: (tx: AppTransaction) => T) => T
+}
+
+export type AppTransaction = {
+  first: <T = unknown>(query: string, ...values: unknown[]) => T | null
+  all: <T = unknown>(query: string, ...values: unknown[]) => T[]
+  run: (query: string, ...values: unknown[]) => QueryMeta
 }
 
 type BoundStatement = {
@@ -131,6 +138,22 @@ export function openSqlite(sqlitePath: string): { raw: Database.Database; db: Ap
         results: [],
         meta: { changes: 0, last_row_id: 0, duration: 0 },
       }
+    },
+    transaction<T>(callback: (tx: AppTransaction) => T): T {
+      const execute = raw.transaction(() => callback({
+        first<R = unknown>(query: string, ...values: unknown[]): R | null {
+          return (raw.prepare(query).get(...values) as R | undefined) ?? null
+        },
+        all<R = unknown>(query: string, ...values: unknown[]): R[] {
+          return raw.prepare(query).all(...values) as R[]
+        },
+        run(query: string, ...values: unknown[]): QueryMeta {
+          const started = Date.now()
+          const info = raw.prepare(query).run(...values)
+          return { changes: info.changes, last_row_id: Number(info.lastInsertRowid), duration: Date.now() - started }
+        },
+      }))
+      return execute()
     },
   }
 
