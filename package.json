@@ -11,7 +11,9 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "smoke:viewer": "tsx scripts/smoke-viewer.ts",
     "smoke:multi-space": "tsx scripts/smoke-multi-space.ts",
-    "smoke:revisions": "tsx scripts/smoke-revisions.ts"
+    "smoke:revisions": "tsx scripts/smoke-revisions.ts",
+    "smoke:running-balance": "tsx scripts/smoke-running-balance.ts",
+    "benchmark:running-balance": "tsx scripts/benchmark-running-balance.ts"
   },
   "dependencies": {
     "@dicebear/adventurer": "^9.4.2",

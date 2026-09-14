@@ -25,7 +25,19 @@ http.interceptors.response.use(
 
 // ── 类型定义 ──────────────────────────────────────────────────
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note' | 'link' | 'totp' | 'password'
+export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note' | 'link' | 'totp' | 'password' | 'running_balance'
+
+export interface RunningBalanceConfig {
+  version: 1
+  kind: 'running_balance'
+  opening_balance: string
+  income_field: string | null
+  expense_field: string | null
+  order_field: string
+  tie_breaker: 'id'
+  null_as_zero: true
+  precision: 2
+}
 
 export interface LinkValue {
   id: string
@@ -58,6 +70,9 @@ export interface FieldMeta {
   isPrimaryKey: boolean
   defaultValue: string | null
   sqliteType: string
+  formula_config: RunningBalanceConfig | null
+  virtual: boolean
+  read_only: boolean
 }
 
 export interface GroupInfo {
@@ -229,10 +244,10 @@ export const api = {
   getFieldMeta: (tableName: string) =>
     http.get<{ data: FieldMeta[] }>(`/tables/${tableName}/fields`).then((r) => r.data.data),
 
-  updateFieldMeta: (tableName: string, colName: string, patch: Partial<Pick<FieldMeta, 'title' | 'field_type' | 'select_options' | 'width' | 'is_hidden' | 'order_index'>>) =>
+  updateFieldMeta: (tableName: string, colName: string, patch: Partial<Pick<FieldMeta, 'title' | 'field_type' | 'select_options' | 'formula_config' | 'width' | 'is_hidden' | 'order_index'>>) =>
     http.patch<{ data: { success: boolean } }>(`/tables/${tableName}/fields/${colName}`, patch).then((r) => r.data.data),
 
-  addField: (tableName: string, data: { title: string; column_name?: string; field_type: FieldType; nullable?: boolean; default_value?: string; select_options?: SelectOption[]; link_table?: string; link_display_field?: string }) =>
+  addField: (tableName: string, data: { title: string; column_name?: string; field_type: FieldType; nullable?: boolean; default_value?: string; select_options?: SelectOption[]; link_table?: string; link_display_field?: string; formula_config?: RunningBalanceConfig }) =>
     http.post<{ data: { column_name: string; title: string; field_type: string } }>(`/tables/${tableName}/fields`, data).then((r) => r.data.data),
 
   deleteField: (tableName: string, colName: string) =>

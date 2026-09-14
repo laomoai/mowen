@@ -1,6 +1,9 @@
 <template>
+  <!-- 累计余额只有在缺少计算顺序时才返回空值 -->
+  <span v-if="fieldType === 'running_balance' && isEmpty" class="cell-empty" title="缺少计算顺序，已不纳入累计">— ⚠</span>
+
   <!-- 空值 -->
-  <span v-if="isEmpty" class="cell-empty">—</span>
+  <span v-else-if="isEmpty" class="cell-empty">—</span>
 
   <!-- checkbox -->
   <span v-else-if="fieldType === 'checkbox'" :class="boolVal ? 'cell-check-on' : 'cell-check-off'">
@@ -37,7 +40,7 @@
   <span v-else-if="fieldType === 'number'" class="cell-number">{{ numVal }}</span>
 
   <!-- currency -->
-  <span v-else-if="fieldType === 'currency'" class="cell-number">{{ currencyVal }}</span>
+  <span v-else-if="fieldType === 'currency' || fieldType === 'running_balance'" class="cell-number">{{ currencyVal }}</span>
 
   <!-- percent -->
   <span v-else-if="fieldType === 'percent'" class="cell-number">{{ percentVal }}</span>

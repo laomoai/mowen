@@ -401,7 +401,7 @@ const groupableFields = computed(() =>
     ['text','select','date','datetime','email','checkbox'].includes(f.field_type))
 )
 const numberFields = computed(() =>
-  props.fields.filter(f => ['number','currency','percent'].includes(f.field_type))
+  props.fields.filter(f => ['number','currency','percent','running_balance'].includes(f.field_type))
 )
 
 function isDateField(col: string) {

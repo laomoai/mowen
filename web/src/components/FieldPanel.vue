@@ -57,7 +57,7 @@
                 <div class="editor-label">字段类型</div>
                 <div class="type-grid">
                   <button
-                    v-for="t in fieldTypes"
+                    v-for="t in editFieldTypes(field)"
                     :key="t.value"
                     class="type-btn"
                     :class="{ active: editForm.field_type === t.value }"
@@ -71,6 +71,27 @@
                     </span>
                     <span class="type-btn-label">{{ t.label }}</span>
                   </button>
+                </div>
+              </div>
+
+              <div v-if="editForm.field_type === 'running_balance'" class="formula-config">
+                <div class="editor-section">
+                  <div class="editor-label">期初余额</div>
+                  <n-input v-model:value="editForm.running_balance.opening_balance" size="small" placeholder="例如 10000.00" />
+                </div>
+                <div class="editor-section">
+                  <div class="editor-label">收入字段（可选）</div>
+                  <naive-select v-model:value="editForm.running_balance.income_field" :options="amountFieldOptions" size="small" clearable placeholder="不计收入" />
+                </div>
+                <div class="editor-section">
+                  <div class="editor-label">支出字段（可选）</div>
+                  <naive-select v-model:value="editForm.running_balance.expense_field" :options="amountFieldOptions" size="small" clearable placeholder="不计支出" />
+                </div>
+                <div class="editor-section">
+                  <div class="editor-label">计算顺序</div>
+                  <naive-select v-model:value="editForm.running_balance.order_field" :options="orderFieldOptions" size="small" placeholder="选择日期或日期时间字段" />
+                  <div class="editor-help">同一时间按记录 ID 排序；无日期的记录余额为空。</div>
+                  <div class="formula-summary">{{ runningBalanceSummary(editForm.running_balance) }}</div>
                 </div>
               </div>
 
@@ -195,6 +216,25 @@
                 />
               </div>
             </template>
+            <template v-if="newField.field_type === 'running_balance'">
+              <div class="editor-section">
+                <div class="editor-label">期初余额</div>
+                <n-input v-model:value="newField.running_balance.opening_balance" size="small" placeholder="例如 10000.00" />
+              </div>
+              <div class="editor-section">
+                <div class="editor-label">收入字段（可选）</div>
+                <naive-select v-model:value="newField.running_balance.income_field" :options="amountFieldOptions" size="small" clearable placeholder="不计收入" />
+              </div>
+              <div class="editor-section">
+                <div class="editor-label">支出字段（可选）</div>
+                <naive-select v-model:value="newField.running_balance.expense_field" :options="amountFieldOptions" size="small" clearable placeholder="不计支出" />
+              </div>
+              <div class="editor-section">
+                <div class="editor-label">计算顺序</div>
+                <naive-select v-model:value="newField.running_balance.order_field" :options="orderFieldOptions" size="small" placeholder="选择日期或日期时间字段" />
+                <div class="editor-help">余额 = 期初余额 + 累计收入 - 累计支出。</div>
+              </div>
+            </template>
             <div class="editor-footer">
               <n-button size="small" @click="showAddForm = false">取消</n-button>
               <n-button size="small" type="primary" :loading="adding" @click="submitAddField">添加</n-button>
@@ -217,9 +257,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue'
-import { useMessage, NDrawer, NDrawerContent, NInput, NButton, NCollapseTransition, NSelect as NaiveSelect } from 'naive-ui'
-import { api, type FieldMeta, type FieldType, type SelectOption } from '@/api/client'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
+import { useDialog, useMessage, NDrawer, NDrawerContent, NInput, NButton, NCollapseTransition, NSelect as NaiveSelect } from 'naive-ui'
+import { api, type FieldMeta, type FieldType, type RunningBalanceConfig, type SelectOption } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import IonIcon from './IonIcon.vue'
 
@@ -232,6 +272,7 @@ const emit = defineEmits<{ refresh: [] }>()
 const visible = defineModel<boolean>('show', { default: false })
 
 const message = useMessage()
+const dialog = useDialog()
 const queryClient = useQueryClient()
 
 const localFields = ref<FieldMeta[]>([])
@@ -257,6 +298,7 @@ const fieldTypes = [
   { value: 'longtext', label: '长文本', icon: '¶',  color: '#888' },
   { value: 'number',   label: '数字',    icon: '#',  color: '#4f6ef7' },
   { value: 'currency', label: '货币',  icon: '¥',  color: '#18a058' },
+  { value: 'running_balance', label: '累计余额', icon: '∑', color: '#0f766e' },
   { value: 'percent',  label: '百分比',   icon: '%',  color: '#f0a020' },
   { value: 'email',    label: '邮箱',     icon: '@',  color: '#00adb5' },
   { value: 'url',      label: '链接',       icon: 'ion:LinkOutline', color: '#4f6ef7' },
@@ -270,6 +312,54 @@ const fieldTypes = [
   { value: 'password', label: '密码', icon: 'ion:LockClosedOutline',  color: '#8a6d3b' },
 ]
 
+type RunningBalanceDraft = Pick<RunningBalanceConfig, 'opening_balance' | 'income_field' | 'expense_field' | 'order_field'>
+const emptyRunningBalance = (): RunningBalanceDraft => ({
+  opening_balance: '0.00', income_field: null, expense_field: null, order_field: '',
+})
+const amountFieldOptions = computed(() => props.fields
+  .filter(field => !field.virtual && !field.isPrimaryKey && field.column_name !== 'created_at' && ['number', 'currency'].includes(field.field_type))
+  .map(field => ({ label: field.title, value: field.column_name })))
+const orderFieldOptions = computed(() => props.fields
+  .filter(field => !field.virtual && !field.isPrimaryKey && field.column_name !== 'created_at' && ['date', 'datetime'].includes(field.field_type))
+  .map(field => ({ label: field.title, value: field.column_name })))
+function editFieldTypes(field: FieldMeta) {
+  return field.field_type === 'running_balance'
+    ? fieldTypes.filter(type => type.value === 'running_balance')
+    : fieldTypes.filter(type => type.value !== 'running_balance')
+}
+function formulaConfig(draft: RunningBalanceDraft): RunningBalanceConfig {
+  return {
+    version: 1, kind: 'running_balance', opening_balance: draft.opening_balance.trim(),
+    income_field: draft.income_field, expense_field: draft.expense_field,
+    order_field: draft.order_field, tie_breaker: 'id', null_as_zero: true, precision: 2,
+  }
+}
+function validateRunningBalanceDraft(draft: RunningBalanceDraft): string | null {
+  if (!/^-?(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/.test(draft.opening_balance.trim())) return '期初余额必须是最多两位小数的数字'
+  if (!draft.income_field && !draft.expense_field) return '收入和支出至少选择一个字段'
+  if (draft.income_field && draft.income_field === draft.expense_field) return '收入和支出不能使用同一字段'
+  if (!draft.order_field) return '请选择计算顺序字段'
+  return null
+}
+function runningBalanceSummary(draft: RunningBalanceDraft): string {
+  const income = amountFieldOptions.value.find(field => field.value === draft.income_field)?.label ?? '无收入'
+  const expense = amountFieldOptions.value.find(field => field.value === draft.expense_field)?.label ?? '无支出'
+  const order = orderFieldOptions.value.find(field => field.value === draft.order_field)?.label ?? '未选顺序'
+  return `期初 ${draft.opening_balance || '—'} + ${income} - ${expense}，按 ${order} 累计`
+}
+function confirmRecalculation(): Promise<boolean> {
+  return new Promise(resolve => {
+    let settled = false
+    const finish = (value: boolean) => { if (!settled) { settled = true; resolve(value) } }
+    dialog.warning({
+      title: '确认整列重算',
+      content: '修改累计余额配置后，这一列的所有显示结果都会立即按新规则重算，原始流水不会被修改。',
+      positiveText: '确认重算', negativeText: '取消',
+      onPositiveClick: () => finish(true), onNegativeClick: () => finish(false), onClose: () => finish(false),
+    })
+  })
+}
+
 // ── 展开编辑 ──────────────────────────────────────────────────
 const expandedCol = ref<string | null>(null)
 const saving = ref(false)
@@ -279,6 +369,7 @@ const editForm = ref({
   select_options: [] as SelectOption[],
   link_table: null as string | null,
   link_display_field: null as string | null,
+  running_balance: emptyRunningBalance(),
 })
 
 // 目标表字段列表（link 字段显示字段选择用）
@@ -318,6 +409,14 @@ function toggleExpand(field: FieldMeta) {
     select_options: selectOpts,
     link_table: linkTable,
     link_display_field: linkDisplayField,
+    running_balance: field.formula_config
+      ? {
+          opening_balance: field.formula_config.opening_balance,
+          income_field: field.formula_config.income_field,
+          expense_field: field.formula_config.expense_field,
+          order_field: field.formula_config.order_field,
+        }
+      : emptyRunningBalance(),
   }
   // 关闭新增表单
   showAddForm.value = false
@@ -352,6 +451,13 @@ async function saveFieldEdit(field: FieldMeta) {
     message.warning('字段名称不能为空')
     return
   }
+  if (editForm.value.field_type === 'running_balance') {
+    const error = validateRunningBalanceDraft(editForm.value.running_balance)
+    if (error) { message.warning(error); return }
+    if (JSON.stringify(formulaConfig(editForm.value.running_balance)) !== JSON.stringify(field.formula_config)) {
+      if (!await confirmRecalculation()) return
+    }
+  }
   saving.value = true
   try {
     const patch: Parameters<typeof api.updateFieldMeta>[2] = {}
@@ -369,6 +475,9 @@ async function saveFieldEdit(field: FieldMeta) {
       patch.select_options = linkOpts as unknown as SelectOption[]
     } else if (field.field_type === 'select') {
       patch.select_options = []
+    }
+    if (editForm.value.field_type === 'running_balance') {
+      patch.formula_config = formulaConfig(editForm.value.running_balance)
     }
 
     if (Object.keys(patch).length === 0) {
@@ -450,10 +559,11 @@ const newField = ref({
   select_options: [] as SelectOption[],
   link_table: null as string | null,
   link_display_field: null as string | null,
+  running_balance: emptyRunningBalance(),
 })
 
 function openAddForm() {
-  newField.value = { title: '', field_type: 'text', select_options: [], link_table: null, link_display_field: null }
+  newField.value = { title: '', field_type: 'text', select_options: [], link_table: null, link_display_field: null, running_balance: emptyRunningBalance() }
   showAddForm.value = true
   cancelExpand()
 }
@@ -468,6 +578,10 @@ async function submitAddField() {
     message.warning('请选择目标表格')
     return
   }
+  if (newField.value.field_type === 'running_balance') {
+    const error = validateRunningBalanceDraft(newField.value.running_balance)
+    if (error) { message.warning(error); return }
+  }
   adding.value = true
   try {
     await api.addField(props.tableName, {
@@ -476,6 +590,7 @@ async function submitAddField() {
       select_options: newField.value.field_type === 'select' ? newField.value.select_options : undefined,
       link_table: newField.value.field_type === 'link' ? newField.value.link_table ?? undefined : undefined,
       link_display_field: newField.value.field_type === 'link' ? newField.value.link_display_field ?? undefined : undefined,
+      formula_config: newField.value.field_type === 'running_balance' ? formulaConfig(newField.value.running_balance) : undefined,
     })
     message.success('字段已添加')
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })
@@ -668,6 +783,25 @@ function typeColor(type: FieldType): string {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 4px;
+}
+.editor-help {
+  margin-top: 5px;
+  color: #8a8f9c;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.formula-config {
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #c9e4df;
+  border-radius: 6px;
+  background: #f3faf8;
+}
+.formula-summary {
+  margin-top: 8px;
+  color: #0f766e;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 /* ── Select 选项编辑器 ─────────────────── */

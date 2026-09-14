@@ -143,6 +143,7 @@ const iconMap: Record<string, string> = {
   longtext: 'ion:DocumentTextOutline',
   number: 'ion:CalculatorOutline',
   currency: 'ion:CashOutline',
+  running_balance: 'ion:CalculatorOutline',
   percent: 'ion:PercentOutline',
   email: 'ion:MailOutline',
   url: 'ion:LinkOutline',
@@ -157,7 +158,7 @@ const iconMap: Record<string, string> = {
   password: 'ion:LockClosedOutline',
 }
 const colorMap: Record<string, string> = {
-  text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
+  text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', running_balance: '#0f766e', percent: '#f0a020',
   email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050',
   checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#6b7280',
   link: '#4f6ef7', totp: '#d03050', password: '#8a6d3b',

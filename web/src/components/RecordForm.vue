@@ -250,6 +250,7 @@ const writableFields = computed(() =>
     f => !f.isPrimaryKey &&
          f.column_name !== 'created_at' &&
          !f.is_hidden &&
+         !f.read_only &&
          !(f.defaultValue?.includes('('))
   )
 )

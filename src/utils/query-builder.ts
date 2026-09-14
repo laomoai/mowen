@@ -1,4 +1,5 @@
 import { sanitizeName } from './schema-cache'
+import { buildRunningBalanceSource, type RunningBalanceField } from './computed-fields'
 
 export type FilterOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'nlike'
 
@@ -29,6 +30,7 @@ export interface SelectOptions {
   offset?: number         // offset 分页（page > 1 时使用）
   skipPageSizeLimit?: boolean  // 导出等场景允许超过 100 行
   searchableFields?: string[]  // 用于全字段搜索
+  runningBalance?: RunningBalanceField | null
 }
 
 function escapeLike(value: string): string {
@@ -51,7 +53,7 @@ export function buildSelectSQL(opts: SelectOptions): {
   sql: string
   params: (string | number)[]
 } {
-  const { tableName, selectFields, filters, sort, cursor, pageSize, offset, searchableFields = [] } = opts
+  const { tableName, selectFields, filters, sort, cursor, pageSize, offset, searchableFields = [], runningBalance } = opts
 
   // cursor 和 offset 互斥：cursor 用于 keyset 分页，offset 用于页码分页
   if (cursor !== undefined && offset !== undefined && offset > 0) {
@@ -65,7 +67,10 @@ export function buildSelectSQL(opts: SelectOptions): {
       : '*'
 
   const conditions: string[] = []
-  const params: (string | number)[] = []
+  const source = runningBalance
+    ? buildRunningBalanceSource(safeTable, runningBalance)
+    : { sql: `"${safeTable}"`, params: [] as Array<string | number> }
+  const params: (string | number)[] = [...source.params]
 
   // Keyset 分页条件（默认 id DESC，所以 cursor 取 < ）
   if (cursor !== undefined) {
@@ -94,11 +99,12 @@ export function buildSelectSQL(opts: SelectOptions): {
       params.push(`%${escapeLike(f.value)}%`)
     } else {
       conditions.push(`${col} ${opSql} ?`)
-      params.push(f.value)
+      const numericValue = Number(f.value)
+      params.push(runningBalance?.columnName === f.field && Number.isFinite(numericValue) ? numericValue : f.value)
     }
   }
 
-  let sql = `SELECT ${fields} FROM "${safeTable}"`
+  let sql = `SELECT ${fields} FROM ${source.sql}`
   if (conditions.length > 0) {
     sql += ` WHERE ${conditions.join(' AND ')}`
   }

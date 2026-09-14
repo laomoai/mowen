@@ -8,11 +8,17 @@ import { getFieldMeta } from './fields'
 import type { AppDatabase, AppPreparedStatement } from '../db/sqlite'
 import { diffSnapshots, savePreimage, type RevisionRow } from '../utils/revisions'
 import { diffTableRows, reconstructTableVersion, saveTableChange, type TableRevisionRow } from '../utils/table-revisions'
+import { getRunningBalanceField } from '../utils/computed-fields'
 
 const records = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
 type SelectOpt = { id?: string; value: string; label: string; color: string }
-type FieldMetaRow = { column_name: string; field_type: string; select_options: unknown[] | null }
+type FieldMetaRow = {
+  column_name: string
+  field_type: string
+  select_options: unknown[] | null
+  formula_config: unknown | null
+}
 
 const SELECT_COLORS = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
 
@@ -98,20 +104,24 @@ records.get('/:tableName/records', async (c) => {
   }
 
   const allColumns = cols.map((c) => c.name)
+  const runningBalance = getRunningBalanceField(fieldMeta)
+  const allowedColumns = runningBalance
+    ? [...allColumns, runningBalance.columnName]
+    : allColumns
 
   // 解析 fields 参数（白名单校验）
   const requestedFields = query.fields
-    ? query.fields.split(',').filter((f) => allColumns.includes(f.trim())).map((f) => f.trim())
+    ? query.fields.split(',').filter((f) => allowedColumns.includes(f.trim())).map((f) => f.trim())
     : []
 
   // 解析筛选条件（白名单校验在 parseFilters 内完成）
-  const filters = parseFilters(query, allColumns)
+  const filters = parseFilters(query, allowedColumns)
 
   // 解析排序
   let sort: { field: string; dir: 'ASC' | 'DESC' } | undefined
   if (query.sort) {
     const [field, dir] = query.sort.split(':')
-    if (field && allColumns.includes(field)) {
+    if (field && allowedColumns.includes(field)) {
       sort = { field, dir: dir?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC' }
     }
   }
@@ -123,6 +133,9 @@ records.get('/:tableName/records', async (c) => {
   const cursor = query.cursor ? parseInt(query.cursor, 10) : undefined
   // page 参数优先于 cursor；二者同时存在时忽略 cursor
   const offset = hasPageParam && page > 1 ? (page - 1) * pageSize : undefined
+  if (!hasPageParam && cursor !== undefined && sort?.field === runningBalance?.columnName) {
+    return c.json({ error: { code: 'PAGE_REQUIRED_FOR_COMPUTED_SORT', message: '累计余额排序请使用 page 分页' } }, 400)
+  }
 
   const { sql, params } = buildSelectSQL({
     tableName,
@@ -133,6 +146,7 @@ records.get('/:tableName/records', async (c) => {
     pageSize,
     offset,
     searchableFields: allColumns.filter((name) => name !== 'id'),
+    runningBalance,
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()
@@ -141,7 +155,7 @@ records.get('/:tableName/records', async (c) => {
   // next_cursor：取最后一条记录的 id
   const lastRow = rows[rows.length - 1]
   const nextCursor =
-    rows.length === pageSize && lastRow && 'id' in lastRow
+    !hasPageParam && sort?.field !== runningBalance?.columnName && rows.length === pageSize && lastRow && 'id' in lastRow
       ? String(lastRow.id)
       : null
 
@@ -379,16 +393,27 @@ records.post('/:tableName/restore-version', requireWriteMiddleware, async (c) =>
 records.get('/:tableName/records/:id', async (c) => {
   const { tableName, id } = c.req.param()
 
-  // 表验证 + 数据 + 字段元数据并行
-  const [allTables, rowResult, fieldMeta] = await Promise.all([
+  // 表验证 + 列结构 + 字段元数据并行
+  const [allTables, cols, fieldMeta] = await Promise.all([
     getUserTables(c.env.DB),
-    c.env.DB.prepare(`SELECT * FROM "${tableName}" WHERE id = ? LIMIT 1`).bind(id).first(),
+    getTableColumns(c.env.DB, tableName),
     getFieldMeta(c.env.DB, tableName),
   ])
 
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
+
+  const runningBalance = getRunningBalanceField(fieldMeta)
+  const { sql, params } = buildSelectSQL({
+    tableName,
+    selectFields: [],
+    filters: [{ field: 'id', op: 'eq', value: id }],
+    pageSize: 1,
+    searchableFields: cols.map(col => col.name).filter(name => name !== 'id'),
+    runningBalance,
+  })
+  const rowResult = await c.env.DB.prepare(sql).bind(...params).first()
 
   if (!rowResult) {
     return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
@@ -763,12 +788,16 @@ records.get('/:tableName/export', async (c) => {
   }
 
   const allColumns = cols.map((col) => col.name)
-  const filters = parseFilters(query, allColumns)
+  const runningBalance = getRunningBalanceField(fieldMeta)
+  const allowedColumns = runningBalance
+    ? [...allColumns, runningBalance.columnName]
+    : allColumns
+  const filters = parseFilters(query, allowedColumns)
 
   let sort: { field: string; dir: 'ASC' | 'DESC' } | undefined
   if (query.sort) {
     const [field, dir] = query.sort.split(':')
-    if (field && allColumns.includes(field)) {
+    if (field && allowedColumns.includes(field)) {
       sort = { field, dir: dir?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC' }
     }
   }
@@ -783,6 +812,7 @@ records.get('/:tableName/export', async (c) => {
     pageSize: EXPORT_ROW_LIMIT + 1,
     skipPageSizeLimit: true,
     searchableFields: allColumns.filter((name) => name !== 'id'),
+    runningBalance,
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()

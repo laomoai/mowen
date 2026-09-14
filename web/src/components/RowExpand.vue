@@ -58,8 +58,8 @@
                 <CellValue :value="currentRow[field.column_name]" :field-type="field.field_type" :select-options="field.select_options" :detail="true" />
               </div>
             </template>
-            <!-- 永久只读：主键、created_at -->
-            <template v-else-if="field.isPrimaryKey || field.column_name === 'created_at'">
+            <!-- 永久只读：主键、created_at、计算字段 -->
+            <template v-else-if="field.isPrimaryKey || field.column_name === 'created_at' || field.read_only">
               <div class="readonly-value-wrap">
                 <CellValue :value="currentRow[field.column_name]" :field-type="field.field_type" :select-options="field.select_options" :detail="true" />
               </div>
@@ -851,7 +851,7 @@ function pickNote(noteId: string) {
 // ── 类型图标 & 颜色 ─────────────────────────────────────────
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
-    text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
+    text: 'T', longtext: '¶', number: '#', currency: '¥', running_balance: '∑', percent: '%',
     email: '@', url: 'ion:LinkOutline', date: 'ion:CalendarOutline', datetime: 'ion:TimeOutline', checkbox: 'ion:CheckboxOutline', select: 'ion:OptionsOutline', image: 'ion:ImageOutline', note: 'ion:DocumentTextOutline', link: 'ion:LinkOutline', totp: 'ion:KeyOutline', password: 'ion:LockClosedOutline',
   }
   return map[type] ?? 'T'
@@ -859,7 +859,7 @@ function typeIcon(type: FieldType): string {
 
 function typeColor(type: FieldType): string {
   const map: Record<string, string> = {
-    text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
+    text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', running_balance: '#0f766e', percent: '#f0a020',
     email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b', link: '#4f6ef7', totp: '#d03050', password: '#8a6d3b',
   }
   return map[type] ?? '#666'

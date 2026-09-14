@@ -573,6 +573,9 @@ function firstColCellRenderer(params: { value: unknown; data: Record<string, unk
 
 function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selectOptions: SelectOption[] | null }): HTMLElement | string {
   const { value, fieldType, selectOptions } = params
+  if (fieldType === 'running_balance' && (value == null || value === '')) {
+    return '<span class="ag-cell-empty" title="缺少计算顺序，已不纳入累计">— ⚠</span>'
+  }
   if (value == null || value === '' || value === '[]' || value === 'null' || (Array.isArray(value) && value.length === 0)) return '<span class="ag-cell-empty">—</span>'
 
   switch (fieldType) {
@@ -612,7 +615,8 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
       return `<span class="ag-cell-num">${isNaN(n) ? esc(String(value)) : n.toLocaleString('en-US')}</span>`
     }
 
-    case 'currency': {
+    case 'currency':
+    case 'running_balance': {
       const n = Number(value)
       return `<span class="ag-cell-num">¥${isNaN(n) ? esc(String(value)) : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`
     }

@@ -14,6 +14,7 @@ import { canAccessNote, getAccessibleNoteIds } from '../utils/note-access'
 import { ensureFieldMeta } from './fields'
 import { signFileUrl } from '../utils/files'
 import { teamFilter } from '../middleware/auth'
+import { getRunningBalanceField } from '../utils/computed-fields'
 
 const viewer = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -23,6 +24,7 @@ type ViewerField = {
   field_type: string
   is_hidden: boolean
   order_index: number
+  formula_config: unknown | null
 }
 
 const BLOCKED_FIELD_TYPES = new Set(['password', 'totp'])
@@ -100,6 +102,7 @@ viewer.get('/tables/:tableName/records', async (c) => {
     ensureFieldMeta(c.env.DB, tableName) as Promise<ViewerField[]>,
   ])
   const allColumns = cols.map((col) => col.name)
+  const runningBalance = getRunningBalanceField(allFields)
   const safeFields = buildSafeFields(allFields, allColumns)
   const safeColumns = safeFields.map((field) => field.column_name)
   const selectedFields = pickRequestedSafeFields(c.req.query('fields'), safeFields)
@@ -108,18 +111,26 @@ viewer.get('/tables/:tableName/records', async (c) => {
   const filters = parseFilters(query, safeColumns)
   const sort = parseSort(query.sort, safeColumns)
   const pageSize = Math.min(parseInt(query.page_size ?? '20', 10) || 20, 100)
+  const hasPageParam = query.page !== undefined
+  const page = Math.max(1, parseInt(query.page ?? '1', 10) || 1)
   const cursor = query.cursor ? parseInt(query.cursor, 10) : undefined
+  const offset = hasPageParam && page > 1 ? (page - 1) * pageSize : undefined
+  if (!hasPageParam && cursor !== undefined && sort?.field === runningBalance?.columnName) {
+    return c.json({ error: { code: 'PAGE_REQUIRED_FOR_COMPUTED_SORT', message: '累计余额排序请使用 page 分页' } }, 400)
+  }
 
   const { sql, params } = buildSelectSQL({
     tableName,
     selectFields: selectedFields.map((field) => field.column_name),
     filters,
     sort,
-    cursor,
+    cursor: hasPageParam ? undefined : cursor,
     pageSize,
+    offset,
     searchableFields: safeFields
       .map((field) => field.column_name)
-      .filter((name) => name !== 'id'),
+      .filter((name) => name !== 'id' && name !== runningBalance?.columnName),
+    runningBalance,
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()
@@ -140,7 +151,7 @@ viewer.get('/tables/:tableName/records', async (c) => {
       page_size: pageSize,
       count: rows.length,
       next_cursor:
-        rows.length === pageSize && lastRow && 'id' in lastRow
+        !hasPageParam && sort?.field !== runningBalance?.columnName && rows.length === pageSize && lastRow && 'id' in lastRow
           ? String(lastRow.id)
           : null,
     },
@@ -158,6 +169,7 @@ viewer.get('/tables/:tableName/records/:id', async (c) => {
     ensureFieldMeta(c.env.DB, tableName) as Promise<ViewerField[]>,
   ])
   const allColumns = cols.map((col) => col.name)
+  const runningBalance = getRunningBalanceField(allFields)
   const safeFields = buildSafeFields(allFields, allColumns)
   const selectedFields = pickRequestedSafeFields(c.req.query('fields'), safeFields)
 
@@ -167,6 +179,7 @@ viewer.get('/tables/:tableName/records/:id', async (c) => {
     filters: [{ field: 'id', op: 'eq', value: id }],
     pageSize: 1,
     searchableFields: [],
+    runningBalance,
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()
@@ -305,7 +318,7 @@ function requestOrigin(c: Context<{ Bindings: Env; Variables: AuthVariables }>):
 function buildSafeFields(fields: ViewerField[], allColumns: string[]): ViewerField[] {
   const allColumnSet = new Set(allColumns)
   const safe = fields.filter((field) => {
-    if (!allColumnSet.has(field.column_name)) return false
+    if (!allColumnSet.has(field.column_name) && field.field_type !== 'running_balance') return false
     if (field.is_hidden && field.column_name !== 'id') return false
     if (BLOCKED_FIELD_TYPES.has(field.field_type)) return false
     return true
@@ -318,6 +331,7 @@ function buildSafeFields(fields: ViewerField[], allColumns: string[]): ViewerFie
       field_type: 'number',
       is_hidden: false,
       order_index: -1,
+      formula_config: null,
     })
   }
 

@@ -2,6 +2,13 @@ import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware } from '../middleware/auth'
 import { getUserTables, isValidIdentifier } from '../utils/schema-cache'
+import {
+  FormulaConfigError,
+  parseRunningBalanceConfig,
+  runningBalanceIndexName,
+  validateRunningBalanceConfig,
+  type RunningBalanceConfig,
+} from '../utils/computed-fields'
 
 const fields = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -81,7 +88,8 @@ async function getMergedFields(db: AppDatabase, tableName: string, existingPragm
       `SELECT * FROM _field_meta WHERE table_name = ? ORDER BY order_index ASC`
     ).bind(tableName).all<{
       id: number; column_name: string; title: string; field_type: string;
-      select_options: string | null; order_index: number; width: number; is_hidden: number
+      select_options: string | null; formula_config: string | null;
+      order_index: number; width: number; is_hidden: number
     }>()
   ])
 
@@ -95,6 +103,7 @@ async function getMergedFields(db: AppDatabase, tableName: string, existingPragm
       title: m?.title ?? c.name,
       field_type: m?.field_type ?? inferFieldType(c.name, c.type),
       select_options: m?.select_options ? JSON.parse(m.select_options) : null,
+      formula_config: m?.formula_config ? JSON.parse(m.formula_config) : null,
       order_index: m?.order_index ?? 999,
       width: m?.width ?? 180,
       is_hidden: (m?.is_hidden ?? 0) === 1,
@@ -102,8 +111,31 @@ async function getMergedFields(db: AppDatabase, tableName: string, existingPragm
       isPrimaryKey: c.pk > 0,
       defaultValue: c.dflt_value,
       sqliteType: c.type,
+      virtual: false,
+      read_only: false,
     }
   })
+
+  const physicalNames = new Set(pragma.results.map(column => column.name))
+  for (const m of meta.results) {
+    if (physicalNames.has(m.column_name) || m.field_type !== 'running_balance') continue
+    allCols.push({
+      column_name: m.column_name,
+      title: m.title,
+      field_type: m.field_type,
+      select_options: null,
+      formula_config: m.formula_config ? JSON.parse(m.formula_config) : null,
+      order_index: m.order_index,
+      width: m.width,
+      is_hidden: m.is_hidden === 1,
+      nullable: true,
+      isPrimaryKey: false,
+      defaultValue: null,
+      sqliteType: 'VIRTUAL',
+      virtual: true,
+      read_only: true,
+    })
+  }
 
   allCols.sort((a, b) => a.order_index - b.order_index)
   return allCols
@@ -145,7 +177,53 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
     width?: number
     is_hidden?: boolean
     order_index?: number
+    formula_config?: unknown
   }>()
+
+  const currentMeta = await c.env.DB.prepare(
+    `SELECT field_type, formula_config FROM _field_meta WHERE table_name = ? AND column_name = ?`,
+  ).bind(tableName, colName).first<{ field_type: string; formula_config: string | null }>()
+  if (currentMeta?.field_type === 'running_balance' && body.field_type && body.field_type !== 'running_balance') {
+    return c.json({ error: { code: 'INVALID_FORMULA_CONFIG', message: '累计余额不能直接转换为普通字段' } }, 400)
+  }
+  if (currentMeta?.field_type !== 'running_balance' && body.field_type === 'running_balance') {
+    return c.json({ error: { code: 'INVALID_FORMULA_CONFIG', message: '请通过新建字段创建累计余额' } }, 400)
+  }
+  if (body.formula_config !== undefined && currentMeta?.field_type !== 'running_balance') {
+    return c.json({ error: { code: 'INVALID_FORMULA_CONFIG', message: '只有累计余额字段可以保存计算配置' } }, 400)
+  }
+
+  let validatedFormula: RunningBalanceConfig | null = null
+  try {
+    const merged = await getMergedFields(c.env.DB, tableName)
+    const physical = merged.filter(field => !field.virtual).map(field => ({ name: field.column_name, fieldType: field.field_type }))
+    if (body.formula_config !== undefined) {
+      validatedFormula = validateRunningBalanceConfig(body.formula_config, physical)
+    }
+    if (body.field_type !== undefined && currentMeta?.field_type !== 'running_balance') {
+      const formulaRows = await c.env.DB.prepare(
+        `SELECT title, formula_config FROM _field_meta WHERE table_name = ? AND field_type = 'running_balance'`,
+      ).bind(tableName).all<{ title: string; formula_config: string }>()
+      for (const formula of formulaRows.results) {
+        const config = parseRunningBalanceConfig(JSON.parse(formula.formula_config))
+        const dependencyKind = config.order_field === colName ? 'order' :
+          (config.income_field === colName || config.expense_field === colName ? 'amount' : null)
+        const compatible = dependencyKind === 'order'
+          ? ['date', 'datetime'].includes(body.field_type)
+          : dependencyKind === 'amount'
+            ? ['number', 'currency'].includes(body.field_type)
+            : true
+        if (!compatible) {
+          return c.json({ error: { code: 'FORMULA_DEPENDENCY', message: `字段正被累计余额“${formula.title}”使用` } }, 409)
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof FormulaConfigError || error instanceof SyntaxError) {
+      return c.json({ error: { code: 'INVALID_FORMULA_CONFIG', message: (error as Error).message } }, 400)
+    }
+    throw error
+  }
 
   const updates: string[] = []
   const params: unknown[] = []
@@ -162,6 +240,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
   if (body.width !== undefined) { updates.push('width = ?'); params.push(body.width) }
   if (body.is_hidden !== undefined) { updates.push('is_hidden = ?'); params.push(body.is_hidden ? 1 : 0) }
   if (body.order_index !== undefined) { updates.push('order_index = ?'); params.push(body.order_index) }
+  if (validatedFormula) { updates.push('formula_config = ?'); params.push(JSON.stringify(validatedFormula)) }
 
   if (updates.length === 0) {
     return c.json({ error: { code: 'NO_CHANGES', message: 'No fields to update' } }, 400)
@@ -216,6 +295,13 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
     )
   }
 
+  if (validatedFormula) {
+    const indexName = runningBalanceIndexName(tableName, validatedFormula.order_field)
+    stmts.push(c.env.DB.prepare(
+      `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ("${validatedFormula.order_field}", "id")`,
+    ))
+  }
+
   const results = await c.env.DB.batch(stmts)
 
   if (results[0].meta.changes === 0) {
@@ -246,6 +332,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     select_options?: Array<{ value: string; label: string; color: string }>
     link_table?: string
     link_display_field?: string
+    formula_config?: unknown
   }>()
 
   if (!body.title?.trim()) {
@@ -267,6 +354,33 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
 
   if (!isValidIdentifier(columnName)) {
     return c.json({ error: { code: 'INVALID_NAME', message: `Cannot generate a valid field name from "${body.title}"` } }, 400)
+  }
+
+  const allTables = await getUserTables(c.env.DB)
+  if (!allTables.includes(tableName)) {
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+
+  let runningBalanceConfig: RunningBalanceConfig | null = null
+  if (body.field_type === 'running_balance') {
+    try {
+      const merged = await getMergedFields(c.env.DB, tableName)
+      if (merged.some(field => field.field_type === 'running_balance')) {
+        return c.json({ error: { code: 'FORMULA_FIELD_LIMIT', message: '当前表已有累计余额字段' } }, 409)
+      }
+      if (merged.some(field => field.column_name === columnName)) {
+        return c.json({ error: { code: 'FIELD_EXISTS', message: `Field "${columnName}" already exists` } }, 409)
+      }
+      runningBalanceConfig = validateRunningBalanceConfig(
+        body.formula_config,
+        merged.filter(field => !field.virtual).map(field => ({ name: field.column_name, fieldType: field.field_type })),
+      )
+    } catch (error) {
+      if (error instanceof FormulaConfigError || error instanceof SyntaxError) {
+        return c.json({ error: { code: 'INVALID_FORMULA_CONFIG', message: (error as Error).message } }, 400)
+      }
+      throw error
+    }
   }
 
   // fieldType → SQLite type
@@ -314,17 +428,16 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   }
 
   try {
-    const batchStmts: AppPreparedStatement[] = [
-      c.env.DB.prepare(alterSQL),
-      c.env.DB.prepare(
-        `INSERT INTO _field_meta (table_name, column_name, title, field_type, select_options, order_index, width)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        tableName, columnName, body.title.trim(), body.field_type,
-        selectOptionsJson,
-        (maxOrder?.max_order ?? 0) + 10, 180
-      ),
-    ]
+    const batchStmts: AppPreparedStatement[] = []
+    if (!runningBalanceConfig) batchStmts.push(c.env.DB.prepare(alterSQL))
+    batchStmts.push(c.env.DB.prepare(
+      `INSERT INTO _field_meta (table_name, column_name, title, field_type, select_options, formula_config, order_index, width)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      tableName, columnName, body.title.trim(), body.field_type,
+      selectOptionsJson, runningBalanceConfig ? JSON.stringify(runningBalanceConfig) : null,
+      (maxOrder?.max_order ?? 0) + 10, 180,
+    ))
 
     // link 字段额外插入 _link_meta
     if (body.field_type === 'link' && body.link_table) {
@@ -333,6 +446,12 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
           `INSERT INTO _link_meta (source_table, source_field, target_table) VALUES (?, ?, ?)`
         ).bind(tableName, columnName, body.link_table)
       )
+    }
+    if (runningBalanceConfig) {
+      const indexName = runningBalanceIndexName(tableName, runningBalanceConfig.order_field)
+      batchStmts.push(c.env.DB.prepare(
+        `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ("${runningBalanceConfig.order_field}", "id")`,
+      ))
     }
 
     await c.env.DB.batch(batchStmts)
@@ -380,17 +499,18 @@ fields.delete('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =
  * 在读路径（GET /records）使用，避免 ensureFieldMeta 的额外 PRAGMA + INSERT 开销
  */
 export async function getFieldMeta(db: AppDatabase, tableName: string): Promise<Array<{
-  column_name: string; title: string; field_type: string; select_options: unknown[] | null
+  column_name: string; title: string; field_type: string; select_options: unknown[] | null; formula_config: unknown | null
 }>> {
   const rows = await db.prepare(
-    `SELECT column_name, title, field_type, select_options FROM _field_meta WHERE table_name = ? ORDER BY order_index ASC`
-  ).bind(tableName).all<{ column_name: string; title: string; field_type: string; select_options: string | null }>()
+    `SELECT column_name, title, field_type, select_options, formula_config FROM _field_meta WHERE table_name = ? ORDER BY order_index ASC`
+  ).bind(tableName).all<{ column_name: string; title: string; field_type: string; select_options: string | null; formula_config: string | null }>()
 
   return rows.results.map(r => ({
     column_name: r.column_name,
     title: r.title,
     field_type: r.field_type,
     select_options: r.select_options ? JSON.parse(r.select_options) : null,
+    formula_config: r.formula_config ? JSON.parse(r.formula_config) : null,
   }))
 }
 
