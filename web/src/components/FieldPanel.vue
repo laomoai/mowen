@@ -89,8 +89,12 @@
                 </div>
                 <div class="editor-section">
                   <div class="editor-label">计算顺序</div>
-                  <naive-select v-model:value="editForm.running_balance.order_field" :options="orderFieldOptions" size="small" placeholder="选择日期或日期时间字段" />
-                  <div class="editor-help">同一时间按记录 ID 排序；无日期的记录余额为空。</div>
+                  <naive-select v-model:value="editForm.running_balance.order_field" :options="orderFieldOptions" size="small" placeholder="选择 ID 或日期字段" />
+                </div>
+                <div class="editor-section">
+                  <div class="editor-label">计算方向</div>
+                  <naive-select v-model:value="editForm.running_balance.order_direction" :options="orderDirectionOptions" size="small" />
+                  <div class="editor-help">按录入先后记账建议选“ID + 正序”；表格页面仍默认按 ID 倒序展示。</div>
                   <div class="formula-summary">{{ runningBalanceSummary(editForm.running_balance) }}</div>
                 </div>
               </div>
@@ -231,7 +235,11 @@
               </div>
               <div class="editor-section">
                 <div class="editor-label">计算顺序</div>
-                <naive-select v-model:value="newField.running_balance.order_field" :options="orderFieldOptions" size="small" placeholder="选择日期或日期时间字段" />
+                <naive-select v-model:value="newField.running_balance.order_field" :options="orderFieldOptions" size="small" placeholder="选择 ID 或日期字段" />
+              </div>
+              <div class="editor-section">
+                <div class="editor-label">计算方向</div>
+                <naive-select v-model:value="newField.running_balance.order_direction" :options="orderDirectionOptions" size="small" />
                 <div class="editor-help">余额 = 期初余额 + 累计收入 - 累计支出。</div>
               </div>
             </template>
@@ -312,16 +320,23 @@ const fieldTypes = [
   { value: 'password', label: '密码', icon: 'ion:LockClosedOutline',  color: '#8a6d3b' },
 ]
 
-type RunningBalanceDraft = Pick<RunningBalanceConfig, 'opening_balance' | 'income_field' | 'expense_field' | 'order_field'>
+type RunningBalanceDraft = Pick<RunningBalanceConfig, 'opening_balance' | 'income_field' | 'expense_field' | 'order_field' | 'order_direction'>
 const emptyRunningBalance = (): RunningBalanceDraft => ({
-  opening_balance: '0.00', income_field: null, expense_field: null, order_field: '',
+  opening_balance: '0.00', income_field: null, expense_field: null, order_field: 'id', order_direction: 'asc',
 })
 const amountFieldOptions = computed(() => props.fields
   .filter(field => !field.virtual && !field.isPrimaryKey && field.column_name !== 'created_at' && ['number', 'currency'].includes(field.field_type))
   .map(field => ({ label: field.title, value: field.column_name })))
-const orderFieldOptions = computed(() => props.fields
-  .filter(field => !field.virtual && !field.isPrimaryKey && field.column_name !== 'created_at' && ['date', 'datetime'].includes(field.field_type))
-  .map(field => ({ label: field.title, value: field.column_name })))
+const orderFieldOptions = computed(() => [
+  { label: 'ID（录入顺序）', value: 'id' },
+  ...props.fields
+    .filter(field => !field.virtual && !field.isPrimaryKey && field.column_name !== 'created_at' && ['date', 'datetime'].includes(field.field_type))
+    .map(field => ({ label: field.title, value: field.column_name })),
+])
+const orderDirectionOptions = [
+  { label: '正序（从早到晚）', value: 'asc' },
+  { label: '倒序（从晚到早）', value: 'desc' },
+]
 function editFieldTypes(field: FieldMeta) {
   return field.field_type === 'running_balance'
     ? fieldTypes.filter(type => type.value === 'running_balance')
@@ -331,7 +346,8 @@ function formulaConfig(draft: RunningBalanceDraft): RunningBalanceConfig {
   return {
     version: 1, kind: 'running_balance', opening_balance: draft.opening_balance.trim(),
     income_field: draft.income_field, expense_field: draft.expense_field,
-    order_field: draft.order_field, tie_breaker: 'id', null_as_zero: true, precision: 2,
+    order_field: draft.order_field, order_direction: draft.order_direction,
+    tie_breaker: 'id', null_as_zero: true, precision: 2,
   }
 }
 function validateRunningBalanceDraft(draft: RunningBalanceDraft): string | null {
@@ -345,7 +361,8 @@ function runningBalanceSummary(draft: RunningBalanceDraft): string {
   const income = amountFieldOptions.value.find(field => field.value === draft.income_field)?.label ?? '无收入'
   const expense = amountFieldOptions.value.find(field => field.value === draft.expense_field)?.label ?? '无支出'
   const order = orderFieldOptions.value.find(field => field.value === draft.order_field)?.label ?? '未选顺序'
-  return `期初 ${draft.opening_balance || '—'} + ${income} - ${expense}，按 ${order} 累计`
+  const direction = draft.order_direction === 'desc' ? '倒序' : '正序'
+  return `期初 ${draft.opening_balance || '—'} + ${income} - ${expense}，按 ${order} ${direction}累计`
 }
 function confirmRecalculation(): Promise<boolean> {
   return new Promise(resolve => {
@@ -415,6 +432,7 @@ function toggleExpand(field: FieldMeta) {
           income_field: field.formula_config.income_field,
           expense_field: field.formula_config.expense_field,
           order_field: field.formula_config.order_field,
+          order_direction: field.formula_config.order_direction ?? 'asc',
         }
       : emptyRunningBalance(),
   }

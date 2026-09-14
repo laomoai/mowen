@@ -59,6 +59,7 @@ async function main() {
       formula_config: {
         version: 1, kind: 'running_balance', opening_balance: '10000.00',
         income_field: 'income', expense_field: 'expense', order_field: 'transaction_date',
+        order_direction: 'asc',
         tie_breaker: 'id', null_as_zero: true, precision: 2,
       },
     }),

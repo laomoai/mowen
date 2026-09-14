@@ -47,6 +47,7 @@ async function main() {
   const config = {
     version: 1, kind: 'running_balance', opening_balance: '1000.00',
     income_field: 'income', expense_field: 'expense', order_field: 'transaction_date',
+    order_direction: 'asc',
     tie_breaker: 'id', null_as_zero: true, precision: 2,
   }
   const created = await call('/api/tables/ledger/fields', {
@@ -86,17 +87,14 @@ async function main() {
   await insert({ transaction_date: null, income: 0, expense: 999, memo: '待补日期' })
 
   const list = await call('/api/tables/ledger/records?page_size=20')
-  assert.deepEqual(list.data.map((row: any) => [row.id, row.balance]), [[3, 870], [2, 850], [1, 1100], [4, null]], '默认应按业务日期倒序而不是插入 id 倒序')
-  assert.equal(list.meta.next_cursor, null, '业务日期默认排序应使用 page 分页')
-  const invalidDefaultCursor = await request('/api/tables/ledger/records?page_size=2&cursor=3')
-  assert.equal(invalidDefaultCursor.status, 400, '累计余额表的业务日期默认排序不得返回不稳定 id 游标')
+  assert.deepEqual(list.data.map((row: any) => [row.id, row.balance]), [[4, null], [3, 870], [2, 850], [1, 1100]], '表格默认保持 ID 倒序展示')
 
   const filtered = await call('/api/tables/ledger/records?page_size=20&filter%5Bbalance__gte%5D=900')
   assert.deepEqual(filtered.data.map((row: any) => row.id), [1], '必须先全表累计再过滤')
 
   const page1 = await call('/api/tables/ledger/records?page=1&page_size=2')
   const page2 = await call('/api/tables/ledger/records?page=2&page_size=2')
-  assert.deepEqual([...page1.data, ...page2.data].map((row: any) => row.balance), [870, 850, 1100, null])
+  assert.deepEqual([...page1.data, ...page2.data].map((row: any) => row.balance), [null, 870, 850, 1100])
   const balancePage1 = await call('/api/tables/ledger/records?page=1&page_size=2&sort=balance:asc')
   const balancePage2 = await call('/api/tables/ledger/records?page=2&page_size=2&sort=balance:asc')
   assert.deepEqual([...balancePage1.data, ...balancePage2.data].map((row: any) => row.balance), [null, 850, 870, 1100])
@@ -114,11 +112,11 @@ async function main() {
     method: 'PATCH', body: JSON.stringify({ transaction_date: '2025-12-31' }),
   })
   const recalculated = await call('/api/tables/ledger/records?page_size=20')
-  assert.deepEqual(recalculated.data.map((row: any) => [row.id, row.balance]), [[2, 870], [1, 1120], [3, 1020], [4, null]])
+  assert.deepEqual(recalculated.data.map((row: any) => [row.id, row.balance]), [[4, null], [3, 1020], [2, 870], [1, 1120]])
 
   await call('/api/tables/ledger/records/1', { method: 'DELETE' })
   const afterDelete = await call('/api/tables/ledger/records?page_size=20')
-  assert.deepEqual(afterDelete.data.map((row: any) => [row.id, row.balance]), [[2, 770], [3, 1020], [4, null]])
+  assert.deepEqual(afterDelete.data.map((row: any) => [row.id, row.balance]), [[4, null], [3, 1020], [2, 770]])
 
   const invalidDependency = await request('/api/tables/ledger/fields/expense', {
     method: 'PATCH', body: JSON.stringify({ field_type: 'text' }),
@@ -146,7 +144,19 @@ async function main() {
     method: 'POST', body: JSON.stringify({ revision_id: beforeDelete.id, base_version: history.current_version }),
   })
   const afterRestore = await call('/api/tables/ledger/records?page_size=20')
-  assert.deepEqual(afterRestore.data.map((row: any) => [row.id, row.balance]), [[2, 1870], [1, 2120], [3, 2020], [4, null]], '整表恢复后应使用当前配置自动重算')
+  assert.deepEqual(afterRestore.data.map((row: any) => [row.id, row.balance]), [[4, null], [3, 2020], [2, 1870], [1, 2120]], '整表恢复后应使用当前配置自动重算')
+
+  await call('/api/tables/ledger/fields/balance', {
+    method: 'PATCH', body: JSON.stringify({ formula_config: { ...config, opening_balance: '2000.00', order_field: 'id', order_direction: 'asc' } }),
+  })
+  const byIdAsc = await call('/api/tables/ledger/records?page_size=20')
+  assert.deepEqual(byIdAsc.data.map((row: any) => [row.id, row.balance]), [[4, 871], [3, 1870], [2, 1850], [1, 2100]], 'ID 正序累计、ID 倒序展示应相互独立')
+
+  await call('/api/tables/ledger/fields/balance', {
+    method: 'PATCH', body: JSON.stringify({ formula_config: { ...config, opening_balance: '2000.00', order_field: 'id', order_direction: 'desc' } }),
+  })
+  const byIdDesc = await call('/api/tables/ledger/records?page_size=20')
+  assert.deepEqual(byIdDesc.data.map((row: any) => [row.id, row.balance]), [[4, 1001], [3, 1021], [2, 771], [1, 871]], 'ID 倒序计算应可配置')
 
   const indexRows = await db.prepare(`PRAGMA index_list("ledger")`).all<{ name: string }>()
   assert.equal(indexRows.results.some(index => index.name.startsWith('idx_rb_')), true, '应创建排序字段索引')

@@ -56,6 +56,7 @@ async function main() {
     assert.equal(cliCreate.url, '/api/tables/ledger/fields')
     assert.equal(cliCreate.body.field_type, 'running_balance')
     assert.equal(cliCreate.body.formula_config.opening_balance, '1000.00')
+    assert.equal(cliCreate.body.formula_config.order_direction, 'asc')
 
     const mcpInput = [
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),

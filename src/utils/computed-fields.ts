@@ -7,6 +7,7 @@ export type RunningBalanceConfig = {
   income_field: string | null
   expense_field: string | null
   order_field: string
+  order_direction: 'asc' | 'desc'
   tie_breaker: 'id'
   null_as_zero: true
   precision: 2
@@ -46,6 +47,7 @@ export function parseRunningBalanceConfig(value: unknown): RunningBalanceConfig 
   const income = input.income_field == null || input.income_field === '' ? null : String(input.income_field)
   const expense = input.expense_field == null || input.expense_field === '' ? null : String(input.expense_field)
   const order = String(input.order_field ?? '')
+  const orderDirection = input.order_direction == null ? 'asc' : String(input.order_direction).toLowerCase()
 
   if (input.version !== 1 || input.kind !== 'running_balance') {
     throw new FormulaConfigError('不支持的累计余额配置版本')
@@ -59,7 +61,10 @@ export function parseRunningBalanceConfig(value: unknown): RunningBalanceConfig 
   for (const name of [income, expense, order].filter((item): item is string => !!item)) {
     if (!isValidIdentifier(name)) throw new FormulaConfigError('配置包含无效字段')
   }
-  if (!order) throw new FormulaConfigError('必须选择交易时间字段')
+  if (!order) throw new FormulaConfigError('必须选择计算顺序字段')
+  if (orderDirection !== 'asc' && orderDirection !== 'desc') {
+    throw new FormulaConfigError('计算顺序只能是正序或倒序')
+  }
   if (input.tie_breaker !== 'id' || input.null_as_zero !== true || input.precision !== 2) {
     throw new FormulaConfigError('累计余额排序、空值或精度配置无效')
   }
@@ -71,6 +76,7 @@ export function parseRunningBalanceConfig(value: unknown): RunningBalanceConfig 
     income_field: income,
     expense_field: expense,
     order_field: order,
+    order_direction: orderDirection,
     tie_breaker: 'id',
     null_as_zero: true,
     precision: 2,
@@ -80,18 +86,19 @@ export function parseRunningBalanceConfig(value: unknown): RunningBalanceConfig 
 export function validateRunningBalanceConfig(value: unknown, physicalFields: PhysicalField[]): RunningBalanceConfig {
   const config = parseRunningBalanceConfig(value)
   const fields = new Map(physicalFields.map(field => [field.name, field.fieldType]))
-  for (const name of [config.income_field, config.expense_field, config.order_field].filter((item): item is string => !!item)) {
+  for (const name of [config.income_field, config.expense_field].filter((item): item is string => !!item)) {
     if (name === 'id' || name === 'created_at') {
-      throw new FormulaConfigError('累计余额不能使用系统字段')
+      throw new FormulaConfigError('收入和支出不能使用系统字段')
     }
   }
+  if (config.order_field === 'created_at') throw new FormulaConfigError('计算顺序不能使用系统创建时间')
   for (const name of [config.income_field, config.expense_field].filter((item): item is string => !!item)) {
     if (!['number', 'currency'].includes(fields.get(name) ?? '')) {
       throw new FormulaConfigError(`字段 ${name} 必须是数字或货币类型`)
     }
   }
-  if (!['date', 'datetime'].includes(fields.get(config.order_field) ?? '')) {
-    throw new FormulaConfigError(`字段 ${config.order_field} 必须是日期或日期时间类型`)
+  if (config.order_field !== 'id' && !['date', 'datetime'].includes(fields.get(config.order_field) ?? '')) {
+    throw new FormulaConfigError(`字段 ${config.order_field} 必须是 ID、日期或日期时间类型`)
   }
   return config
 }
@@ -113,9 +120,15 @@ export function buildRunningBalanceSource(tableName: string, field: RunningBalan
   const table = quoted(tableName)
   const result = quoted(field.columnName)
   const order = quoted(config.order_field)
+  const direction = config.order_direction.toUpperCase()
   const income = config.income_field ? `COALESCE(CAST(${quoted(config.income_field)} AS NUMERIC), 0)` : '0'
   const expense = config.expense_field ? `COALESCE(CAST(${quoted(config.expense_field)} AS NUMERIC), 0)` : '0'
-  const missingOrder = `(${order} IS NULL OR TRIM(CAST(${order} AS TEXT)) = '')`
+  const missingOrder = config.order_field === 'id'
+    ? '0'
+    : `(${order} IS NULL OR TRIM(CAST(${order} AS TEXT)) = '')`
+  const windowOrder = config.order_field === 'id'
+    ? `"id" ${direction}`
+    : `CASE WHEN ${missingOrder} THEN 1 ELSE 0 END, ${order} ${direction}, "id" ${direction}`
 
   return {
     sql: `(SELECT t.*,
@@ -123,7 +136,7 @@ export function buildRunningBalanceSource(tableName: string, field: RunningBalan
         ROUND(CAST(? AS NUMERIC) + SUM(
           CASE WHEN ${missingOrder} THEN 0 ELSE ${income} - ${expense} END
         ) OVER (
-          ORDER BY CASE WHEN ${missingOrder} THEN 1 ELSE 0 END, ${order} ASC, "id" ASC
+          ORDER BY ${windowOrder}
           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ), 2)
       END AS ${result}

@@ -89,6 +89,7 @@ def running_balance_config(args) -> dict:
         "income_field": optional_field(args.income),
         "expense_field": optional_field(args.expense),
         "order_field": args.order,
+        "order_direction": args.direction,
         "tie_breaker": "id",
         "null_as_zero": True,
         "precision": 2,
@@ -134,7 +135,8 @@ def main() -> None:
     s.add_argument("--opening", required=True, help="期初值，最多两位小数")
     s.add_argument("--income", help="收入的数字/货币字段；不使用时省略")
     s.add_argument("--expense", help="支出的数字/货币字段；不使用时省略")
-    s.add_argument("--order", required=True, help="日期/日期时间字段")
+    s.add_argument("--order", required=True, help="id、日期或日期时间字段")
+    s.add_argument("--direction", choices=("asc", "desc"), default="asc", help="计算方向，默认 asc")
     s = sub.add_parser("update-running-balance", help="更新累计余额配置")
     s.add_argument("--table", required=True)
     s.add_argument("--field", required=True, help="累计余额的 column_name")
@@ -142,6 +144,7 @@ def main() -> None:
     s.add_argument("--income")
     s.add_argument("--expense")
     s.add_argument("--order", required=True)
+    s.add_argument("--direction", choices=("asc", "desc"), default="asc")
 
     sub.add_parser("notes", help="笔记列表")
     s = sub.add_parser("note", help="笔记详情")

@@ -103,7 +103,9 @@ async function getMergedFields(db: AppDatabase, tableName: string, existingPragm
       title: m?.title ?? c.name,
       field_type: m?.field_type ?? inferFieldType(c.name, c.type),
       select_options: m?.select_options ? JSON.parse(m.select_options) : null,
-      formula_config: m?.formula_config ? JSON.parse(m.formula_config) : null,
+      formula_config: m?.formula_config
+        ? (m.field_type === 'running_balance' ? parseRunningBalanceConfig(JSON.parse(m.formula_config)) : JSON.parse(m.formula_config))
+        : null,
       order_index: m?.order_index ?? 999,
       width: m?.width ?? 180,
       is_hidden: (m?.is_hidden ?? 0) === 1,
@@ -124,7 +126,7 @@ async function getMergedFields(db: AppDatabase, tableName: string, existingPragm
       title: m.title,
       field_type: m.field_type,
       select_options: null,
-      formula_config: m.formula_config ? JSON.parse(m.formula_config) : null,
+      formula_config: m.formula_config ? parseRunningBalanceConfig(JSON.parse(m.formula_config)) : null,
       order_index: m.order_index,
       width: m.width,
       is_hidden: m.is_hidden === 1,
@@ -295,7 +297,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
     )
   }
 
-  if (validatedFormula) {
+  if (validatedFormula && validatedFormula.order_field !== 'id') {
     const indexName = runningBalanceIndexName(tableName, validatedFormula.order_field)
     stmts.push(c.env.DB.prepare(
       `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ("${validatedFormula.order_field}", "id")`,
@@ -447,7 +449,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
         ).bind(tableName, columnName, body.link_table)
       )
     }
-    if (runningBalanceConfig) {
+    if (runningBalanceConfig && runningBalanceConfig.order_field !== 'id') {
       const indexName = runningBalanceIndexName(tableName, runningBalanceConfig.order_field)
       batchStmts.push(c.env.DB.prepare(
         `CREATE INDEX IF NOT EXISTS "${indexName}" ON "${tableName}" ("${runningBalanceConfig.order_field}", "id")`,
@@ -510,7 +512,9 @@ export async function getFieldMeta(db: AppDatabase, tableName: string): Promise<
     title: r.title,
     field_type: r.field_type,
     select_options: r.select_options ? JSON.parse(r.select_options) : null,
-    formula_config: r.formula_config ? JSON.parse(r.formula_config) : null,
+    formula_config: r.formula_config
+      ? (r.field_type === 'running_balance' ? parseRunningBalanceConfig(JSON.parse(r.formula_config)) : JSON.parse(r.formula_config))
+      : null,
   }))
 }
 

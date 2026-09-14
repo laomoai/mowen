@@ -115,11 +115,6 @@ export function buildSelectSQL(opts: SelectOptions): {
     sql += ` ORDER BY "${safeField}" ${sort.dir}, "id" DESC`
   } else if (sort && sort.field === 'id') {
     sql += ` ORDER BY "id" ${sort.dir}`
-  } else if (runningBalance) {
-    // 账本默认展示最新业务日期，与累计时的固定日期/id 顺序保持一致。
-    // 否则补录旧日期的新 id 会排在更新日期之上，让正确余额看起来像计算错误。
-    const orderField = sanitizeName(runningBalance.config.order_field)
-    sql += ` ORDER BY "${orderField}" DESC, "id" DESC`
   } else {
     sql += ` ORDER BY "id" DESC`
   }

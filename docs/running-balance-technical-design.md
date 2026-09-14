@@ -40,6 +40,7 @@ type RunningBalanceConfig = {
   income_field: string | null
   expense_field: string | null
   order_field: string
+  order_direction: 'asc' | 'desc'
   tie_breaker: 'id'
   null_as_zero: true
   precision: 2
@@ -50,7 +51,7 @@ type RunningBalanceConfig = {
 
 - `opening_balance` 是有限十进制数，最多两位小数，且数值范围受限。
 - 引用字段必须存在于当前业务表的 `PRAGMA table_info`，不能引用虚拟字段。
-- 收入/支出类型是 `number` 或 `currency`；顺序字段类型是 `date` 或 `datetime`。
+- 收入/支出类型是 `number` 或 `currency`；顺序字段可为 `id`、`date` 或 `datetime`，方向为 `asc` / `desc`。旧配置缺少方向时按 `asc` 处理。
 - 收入/支出不能是同一字段，也不能同时为 `null`。
 - 同一表内不存在另一个 `running_balance` 字段。
 
@@ -140,8 +141,8 @@ V1 不允许累计余额作为 link 字段的展示字段，避免 link search �
 ### 4.3 筛选、排序和分页
 
 - 原始字段和累计余额的筛选都放在 CTE 外层，保证筛选不改变账本余额。
-- 视图可以按余额显示排序，但窗口函数始终使用配置中的时间字段和 `id ASC`。
-- 未显式指定显示排序时，累计余额表按配置的时间字段 `DESC, id DESC` 返回，而不是按插入 `id` 倒序。这能避免补录旧日期时产生“余额与上下行对不上”的假象。
+- 视图可以按任意字段显示排序，但窗口函数始终使用配置的 `order_field + order_direction`。
+- 未显式指定显示排序时仍按实体 `id DESC` 返回。账本可配置 `id ASC` 计算，同时以 `id DESC` 展示，两者不得混为同一个排序概念。
 - 当前自定义排序下的单 `id` 游标不是严格复合游标。V1 对“按余额排序”使用 `page`/`OFFSET` 分页；默认实体 `id DESC` 可保留现有游标语义。
 - 即使只返回第二页，累计也在分页前完成。
 

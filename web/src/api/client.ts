@@ -34,6 +34,7 @@ export interface RunningBalanceConfig {
   income_field: string | null
   expense_field: string | null
   order_field: string
+  order_direction: 'asc' | 'desc'
   tie_breaker: 'id'
   null_as_zero: true
   precision: 2
