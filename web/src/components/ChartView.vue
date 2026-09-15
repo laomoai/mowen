@@ -264,6 +264,7 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } f
 import { CanvasRenderer } from 'echarts/renderers'
 import { api, type FieldMeta, type RecordRow } from '@/api/client'
 import { copyText } from '@/utils/clipboard'
+import { sortRawChartRecords } from '@/utils/chartOrder'
 import IonIcon from './IonIcon.vue'
 
 echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
@@ -541,14 +542,12 @@ function computeChartPayload(widget: Widget): ChartPayload {
     const yCols = widget.rawYCols
     if (yCols.length === 0) return { labels: [], series: [] }
 
-    const records = allRecords.value
-      .filter(r => !xCol || (r[xCol] != null && r[xCol] !== ''))
-      .sort((a, b) => {
-        if (!xCol) return 0
-        const av = xCol ? String(a[xCol]) : ''
-        const bv = xCol ? String(b[xCol]) : ''
-        return av.localeCompare(bv)
-      })
+    const records = sortRawChartRecords(
+      allRecords.value.filter(r => !xCol || (r[xCol] != null && r[xCol] !== '')),
+      xCol,
+      yCols,
+      props.fields,
+    ) as RecordRow[]
 
     const labels = records.map((r, i) => {
       if (!xCol) return String(i + 1)
